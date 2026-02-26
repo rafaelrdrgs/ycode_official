@@ -786,6 +786,92 @@ export const formTemplates: Record<string, BlockTemplate> = {
     }
   },
 
+  filter: {
+    icon: 'filter',
+    name: 'Filter',
+    template: {
+      name: 'filter',
+      customName: 'Filter',
+      classes: ['flex', 'flex-row', 'items-center', 'gap-2', 'w-full'],
+      settings: {
+        tag: 'div',
+        filterOnChange: false,
+      },
+      children: [
+        {
+          name: 'input',
+          customName: 'Input',
+          classes: ['flex-1', 'px-4', 'py-2.5', 'text-[16px]', 'leading-[24px]', 'tracking-[0px]', 'text-[#171717]', 'bg-[#d4d4d4]/10', 'border', 'border-solid', 'border-[#737373]/[0.15]', 'rounded-xl', 'placeholder:text-[#a8a8a8]', 'focus:outline-none', 'focus:border-[#737373]/20', 'disabled:opacity-50', 'cursor-text'],
+          attributes: {
+            type: 'text',
+            placeholder: 'Search...',
+          },
+          restrictions: { ancestor: 'filter' },
+          design: {
+            sizing: {
+              isActive: true,
+            },
+            spacing: {
+              isActive: true,
+              paddingLeft: '1rem',
+              paddingRight: '1rem',
+              paddingTop: '0.625rem',
+              paddingBottom: '0.625rem'
+            },
+            borders: {
+              isActive: true,
+              borderWidth: '1px',
+              borderColor: 'rgba(115, 115, 115, 0.15)',
+              borderRadius: '0.75rem'
+            },
+            backgrounds: {
+              isActive: true,
+              backgroundColor: 'rgba(212, 212, 212, 0.1)'
+            },
+            typography: {
+              isActive: true,
+              fontSize: '16px',
+              lineHeight: '24px',
+              letterSpacing: '0px',
+              color: '#171717'
+            }
+          }
+        },
+        getTemplateRef('button', {
+          children: [
+            getTemplateRef('text', {
+              settings: { tag: 'span' },
+              classes: [],
+              design: {},
+              restrictions: { editText: true },
+              variables: {
+                text: {
+                  type: 'dynamic_rich_text',
+                  data: {
+                    content: getTiptapTextContent('Search')
+                  }
+                }
+              }
+            }),
+          ],
+        }),
+      ] as any[],
+      design: {
+        sizing: {
+          isActive: true,
+          width: '100%'
+        },
+        layout: {
+          isActive: true,
+          display: 'Flex',
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: '0.5rem'
+        }
+      }
+    }
+  },
+
   label: {
     icon: 'text',
     name: 'Label',

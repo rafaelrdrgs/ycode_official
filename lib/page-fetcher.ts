@@ -1549,16 +1549,28 @@ export async function resolveCollectionLayers(
           let items = fetchResult.items;
           const totalItems = fetchResult.total;
 
-          // Apply collection filters (evaluate against each item's own values)
+          // Apply static collection filters (evaluate against each item's own values)
+          // Dynamic filters (conditions with inputLayerId) are handled client-side
+          // by FilterableCollection, so we strip them here during SSR
           const collectionFilters = collectionVariable.filters;
           if (collectionFilters?.groups?.length) {
-            items = items.filter(item =>
-              evaluateVisibility(collectionFilters, {
-                collectionLayerData: item.values,
-                pageCollectionData: null,
-                pageCollectionCounts: {},
-              })
-            );
+            const staticFilters = {
+              ...collectionFilters,
+              groups: collectionFilters.groups.map(group => ({
+                ...group,
+                conditions: group.conditions.filter(c => !c.inputLayerId),
+              })).filter(group => group.conditions.length > 0),
+            };
+
+            if (staticFilters.groups.length > 0) {
+              items = items.filter(item =>
+                evaluateVisibility(staticFilters, {
+                  collectionLayerData: item.values,
+                  pageCollectionData: null,
+                  pageCollectionCounts: {},
+                })
+              );
+            }
           }
 
           // Apply sorting if specified (since API doesn't handle sortBy yet)
@@ -1678,6 +1690,11 @@ export async function resolveCollectionLayers(
           // Pagination is now a sibling layer, not added here
           const fragmentChildren = clonedLayers;
 
+          // Check if this collection has linked filters (any condition with inputLayerId)
+          const hasLinkedFilters = collectionFilters?.groups?.some(g =>
+            g.conditions.some(c => !!c.inputLayerId)
+          );
+
           // Return a fragment layer - LayerRenderer will render children directly without wrapper
           return {
             ...layer,
@@ -1693,6 +1710,17 @@ export async function resolveCollectionLayers(
             },
             // Store pagination meta for client hydration (SSR only)
             _paginationMeta: paginationMeta,
+            // Store filter config for client-side filtering (when collection has linked filter inputs)
+            _filterConfig: hasLinkedFilters ? {
+              collectionId: collectionVariable.id,
+              collectionLayerId: layer.id,
+              filters: collectionFilters!,
+              sortBy: collectionVariable.sort_by,
+              sortOrder: collectionVariable.sort_order,
+              limit: isPaginated ? paginationConfig.items_per_page : collectionVariable.limit,
+              paginationMode: isPaginated ? paginationConfig.mode : undefined,
+              layerTemplate: layer.children || [],
+            } : undefined,
           };
         } catch (error) {
           console.error(`Failed to resolve collection layer ${layer.id}:`, error);
@@ -1796,6 +1824,49 @@ function computeCollectionCounts(layers: Layer[]): Record<string, number> {
 }
 
 /**
+ * Find collection layer IDs that have linked filters (_filterConfig).
+ * These need special handling for conditional visibility (has_no_items etc.)
+ * since filtered counts change at runtime.
+ */
+function findFilterableCollectionIds(layers: Layer[]): Set<string> {
+  const ids = new Set<string>();
+  function traverse(layerList: Layer[]) {
+    for (const layer of layerList) {
+      if (layer._filterConfig) {
+        ids.add(layer._filterConfig.collectionLayerId);
+      }
+      if (layer.children) traverse(layer.children);
+    }
+  }
+  traverse(layers);
+  return ids;
+}
+
+/**
+ * Check if a layer's conditional visibility references a filterable collection
+ * via page_collection conditions (has_no_items, has_items, item_count).
+ * Returns the collection layer ID if found, null otherwise.
+ */
+function getFilterableCollectionTarget(
+  conditionalVisibility: import('@/types').ConditionalVisibility,
+  filterableIds: Set<string>
+): { collectionLayerId: string; operator: string } | null {
+  for (const group of conditionalVisibility.groups || []) {
+    for (const condition of group.conditions) {
+      if (
+        condition.source === 'page_collection' &&
+        condition.collectionLayerId &&
+        filterableIds.has(condition.collectionLayerId) &&
+        (condition.operator === 'has_no_items' || condition.operator === 'has_items' || condition.operator === 'item_count')
+      ) {
+        return { collectionLayerId: condition.collectionLayerId, operator: condition.operator };
+      }
+    }
+  }
+  return null;
+}
+
+/**
  * Filter layers by conditional visibility rules
  * @param layers - Layer tree to filter
  * @param collectionLayerData - Current collection layer item values for field conditions
@@ -1807,18 +1878,15 @@ function filterByVisibility(
   collectionLayerData?: Record<string, string>,
   pageCollectionData?: Record<string, string> | null
 ): Layer[] {
-  // First compute all collection counts
   const pageCollectionCounts = computeCollectionCounts(layers);
+  const filterableCollectionIds = findFilterableCollectionIds(layers);
 
   function filterLayer(
     layer: Layer,
     currentCollectionLayerData?: Record<string, string>
   ): Layer | null {
-    // Use stored item values from cloned collection layers if available
-    // This ensures children of collection items have access to the correct item values
     const effectiveCollectionLayerData = layer._collectionItemValues || currentCollectionLayerData;
 
-    // Check conditional visibility
     const conditionalVisibility = layer.variables?.conditionalVisibility;
     if (conditionalVisibility && conditionalVisibility.groups?.length > 0) {
       const isVisible = evaluateVisibility(conditionalVisibility, {
@@ -1827,11 +1895,33 @@ function filterByVisibility(
         pageCollectionCounts,
       });
       if (!isVisible) {
+        // If this layer targets a filterable collection, keep it hidden instead of removing
+        const filterTarget = getFilterableCollectionTarget(conditionalVisibility, filterableCollectionIds);
+        if (filterTarget) {
+          const dataAttr = filterTarget.operator === 'has_no_items'
+            ? 'data-collection-empty-state'
+            : 'data-collection-has-items';
+          return {
+            ...layer,
+            _dynamicStyles: {
+              ...(layer._dynamicStyles || {}),
+              display: 'none',
+            },
+            attributes: {
+              ...(layer.attributes || {}),
+              [dataAttr]: filterTarget.collectionLayerId,
+            },
+            children: layer.children
+              ? layer.children
+                .map(child => filterLayer(child, effectiveCollectionLayerData))
+                .filter((child): child is Layer => child !== null)
+              : undefined,
+          };
+        }
         return null;
       }
     }
 
-    // Recursively filter children, passing down the effective item values
     if (layer.children) {
       const filteredChildren = layer.children
         .map(child => filterLayer(child, effectiveCollectionLayerData))
@@ -2162,9 +2252,35 @@ async function injectCollectionDataForHtml(
 
   const updates: Partial<Layer> = {};
 
-  // Resolve inline variables (DynamicTextVariable format)
+  // Resolve inline variables in text content
   const textVariable = layer.variables?.text;
-  if (textVariable && textVariable.type === 'dynamic_text') {
+
+  // Handle DynamicRichTextVariable (Tiptap JSON with dynamicVariable nodes)
+  if (textVariable && textVariable.type === 'dynamic_rich_text') {
+    const content = textVariable.data.content;
+    if (content && typeof content === 'object') {
+      const restrictiveBlockTags = ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'span', 'a', 'button'];
+      const currentTag = layer.settings?.tag || layer.name || 'div';
+      if (restrictiveBlockTags.includes(currentTag) &&
+          hasBlockElementsInInlineVariables(content, enhancedValues)) {
+        updates.settings = {
+          ...layer.settings,
+          tag: 'div',
+        };
+      }
+
+      const resolvedContent = resolveRichTextVariables(content, enhancedValues);
+      updates.variables = {
+        ...layer.variables,
+        text: {
+          type: 'dynamic_rich_text',
+          data: { content: resolvedContent }
+        }
+      };
+    }
+  }
+  // Handle DynamicTextVariable (legacy string format with inline variable tags)
+  else if (textVariable && textVariable.type === 'dynamic_text') {
     const textContent = textVariable.data.content;
     if (textContent.includes('<ycode-inline-variable>')) {
       const mockItem: CollectionItemWithValues = {
@@ -2702,6 +2818,14 @@ function layerToHtml(
 
   if (layer.id) {
     attrs.push(`data-layer-id="${escapeHtml(layer.id)}"`);
+  }
+
+  // Render filter-dependent conditional visibility data attributes
+  if (layer.attributes?.['data-collection-empty-state']) {
+    attrs.push(`data-collection-empty-state="${escapeHtml(layer.attributes['data-collection-empty-state'])}"`);
+  }
+  if (layer.attributes?.['data-collection-has-items']) {
+    attrs.push(`data-collection-has-items="${escapeHtml(layer.attributes['data-collection-has-items'])}"`);
   }
 
   if (classesStr) {

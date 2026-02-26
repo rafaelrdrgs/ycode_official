@@ -92,6 +92,9 @@ interface EditorActions {
   startCanvasLayerDrag: (layerId: string, layerName: string, parentId: string | null, originalIndex: number, siblingIds: string[], startPosition: { x: number; y: number }) => void;
   updateCanvasSiblingDropTarget: (target: CanvasSiblingDropTarget | null) => void;
   endCanvasLayerDrag: () => void;
+  // Element picker actions
+  startElementPicker: (onSelect: (layerId: string) => void, validate?: (layerId: string) => boolean, originPosition?: { x: number; y: number }) => void;
+  stopElementPicker: () => void;
 }
 
 interface EditorStoreWithHistory extends EditorState {
@@ -147,6 +150,13 @@ interface EditorStoreWithHistory extends EditorState {
   siblingLayerIds: string[];
   canvasSiblingDropTarget: CanvasSiblingDropTarget | null;
   layerDragStartPosition: { x: number; y: number } | null;
+  // Element picker state (for linking filter inputs to collection conditions)
+  elementPicker: {
+    active: boolean;
+    onSelect: ((layerId: string) => void) | null;
+    validate?: ((layerId: string) => boolean) | null;
+    originPosition?: { x: number; y: number } | null;
+  } | null;
   // Computed getters
   showTextStyleControls: () => boolean;
 }
@@ -210,6 +220,8 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   siblingLayerIds: [],
   canvasSiblingDropTarget: null,
   layerDragStartPosition: null,
+  // Element picker initial state
+  elementPicker: null,
 
   // Computed getter: Returns true when text style controls should be shown
   // This happens when:
@@ -558,5 +570,19 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     siblingLayerIds: [],
     canvasSiblingDropTarget: null,
     layerDragStartPosition: null,
+  }),
+
+  // Element picker actions
+  startElementPicker: (onSelect, validate, originPosition) => set({
+    elementPicker: {
+      active: true,
+      onSelect,
+      validate: validate ?? null,
+      originPosition: originPosition ?? null,
+    },
+  }),
+
+  stopElementPicker: () => set({
+    elementPicker: null,
   }),
 }));

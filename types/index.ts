@@ -164,6 +164,7 @@ export interface LayerSettings {
     code?: string; // Custom HTML code to embed
   };
   form?: FormSettings; // Form-specific settings (only for form layers)
+  filterOnChange?: boolean; // For filter layers: trigger filtering on every input change (debounced)
 }
 
 // Layer Style Types
@@ -320,6 +321,17 @@ export interface Layer {
   _paginationMeta?: CollectionPaginationMeta;
   // SSR-only property for dynamic inline styles from CMS color field bindings
   _dynamicStyles?: Record<string, string>;
+  // SSR-only property for filterable collection config (when collection has linked filter inputs)
+  _filterConfig?: {
+    collectionId: string;
+    collectionLayerId: string;
+    filters: ConditionalVisibility;
+    sortBy?: string;
+    sortOrder?: 'asc' | 'desc';
+    limit?: number;
+    paginationMode?: 'pages' | 'load_more';
+    layerTemplate: Layer[];
+  };
 }
 
 export interface LayerVariables {
@@ -1141,6 +1153,8 @@ export interface VisibilityCondition {
   collectionLayerName?: string; // Display name for the layer
   compareOperator?: 'eq' | 'lt' | 'lte' | 'gt' | 'gte'; // For 'item_count' operator
   compareValue?: number; // For 'item_count' operator
+  // For linking filter value to an input layer inside a Filter
+  inputLayerId?: string;
 }
 
 export interface VisibilityConditionGroup {

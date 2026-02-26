@@ -15,7 +15,7 @@ interface CollectionLayerState {
   layerData: Record<string, CollectionItemWithValues[]>; // keyed by layerId
   loading: Record<string, boolean>; // loading state per layer
   error: Record<string, string | null>; // error state per layer
-  layerConfig: Record<string, { collectionId: string; sortBy?: string; sortOrder?: 'asc' | 'desc'; limit?: number; offset?: number }>; // Track config per layer
+  layerConfig: Record<string, { collectionId: string; sortBy?: string; sortOrder?: 'asc' | 'desc'; limit?: number; offset?: number; filters?: Array<{ fieldId: string; operator: string; value: string }> }>; // Track config per layer
   referencedItems: Record<string, CollectionItemWithValues[]>; // Items for referenced collections, keyed by collectionId
   referencedLoading: Record<string, boolean>; // Loading state for referenced collections
   // Pagination state
@@ -30,7 +30,8 @@ interface CollectionLayerActions {
     sortBy?: string,
     sortOrder?: 'asc' | 'desc',
     limit?: number,
-    offset?: number
+    offset?: number,
+    filters?: Array<{ fieldId: string; operator: string; value: string }>
   ) => Promise<void>;
   fetchReferencedCollectionItems: (collectionId: string) => Promise<void>;
   clearLayerData: (layerId: string) => void;
@@ -92,7 +93,8 @@ export const useCollectionLayerStore = create<CollectionLayerStore>((set, get) =
     sortBy?: string,
     sortOrder: 'asc' | 'desc' = 'asc',
     limit?: number,
-    offset?: number
+    offset?: number,
+    filters?: Array<{ fieldId: string; operator: string; value: string }>
   ) => {
     const { layerData, loading, layerConfig } = get();
 
@@ -108,12 +110,14 @@ export const useCollectionLayerStore = create<CollectionLayerStore>((set, get) =
 
     // Check if we already have data with the same config
     const existingConfig = layerConfig[layerId];
+    const filtersMatch = JSON.stringify(existingConfig?.filters) === JSON.stringify(filters);
     const configMatches = existingConfig &&
       existingConfig.collectionId === collectionId &&
       existingConfig.sortBy === sortBy &&
       existingConfig.sortOrder === sortOrder &&
       existingConfig.limit === limit &&
-      existingConfig.offset === offset;
+      existingConfig.offset === offset &&
+      filtersMatch;
 
     // Skip if we have data and config matches
     if (layerData[layerId]?.length > 0 && configMatches) {
@@ -133,6 +137,7 @@ export const useCollectionLayerStore = create<CollectionLayerStore>((set, get) =
         sortOrder,
         limit,
         offset,
+        filters,
       });
 
       if (response.error) {
@@ -147,7 +152,7 @@ export const useCollectionLayerStore = create<CollectionLayerStore>((set, get) =
         loading: { ...state.loading, [layerId]: false },
         layerConfig: {
           ...state.layerConfig,
-          [layerId]: { collectionId, sortBy, sortOrder, limit, offset }
+          [layerId]: { collectionId, sortBy, sortOrder, limit, offset, filters }
         },
       }));
     } catch (error) {
@@ -224,6 +229,7 @@ export const useCollectionLayerStore = create<CollectionLayerStore>((set, get) =
             sortOrder: config.sortOrder,
             limit: config.limit,
             offset: config.offset,
+            filters: config.filters,
           });
 
           if (!response.error && response.data?.items) {

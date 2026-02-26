@@ -1,0 +1,530 @@
+import { NextRequest } from 'next/server';
+import { getSupabaseAdmin } from '@/lib/supabase-server';
+import { getItemsByCollectionId } from '@/lib/repositories/collectionItemRepository';
+import { getValuesByItemIds } from '@/lib/repositories/collectionItemValueRepository';
+import { getFieldsByCollectionId } from '@/lib/repositories/collectionFieldRepository';
+import { getAllPages } from '@/lib/repositories/pageRepository';
+import { getAllPageFolders } from '@/lib/repositories/pageFolderRepository';
+import { renderCollectionItemsToHtml, loadTranslationsForLocale } from '@/lib/page-fetcher';
+import { noCache } from '@/lib/api-response';
+import type { Layer, CollectionItemWithValues } from '@/types';
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+type SupabaseClient = NonNullable<Awaited<ReturnType<typeof getSupabaseAdmin>>>;
+
+interface FilterCondition {
+  fieldId: string;
+  operator: string;
+  value: string;
+  value2?: string;
+}
+
+// PostgREST encodes .in() values into a URL query param.
+// Conservative chunk size avoids hitting URL length limits (~8KB).
+const IN_CHUNK_SIZE = 150;
+
+/**
+ * Run a query against collection_item_values in chunks to avoid
+ * Supabase/PostgREST URL-length limits on .in() clauses.
+ *
+ * @param build  - receives a chunk of item IDs; must return { data, error }
+ * @param itemIds - full array of item IDs to query against
+ */
+async function chunkedQuery<T>(
+  build: (chunk: string[]) => PromiseLike<{ data: T[] | null; error: any }>,
+  itemIds: string[],
+): Promise<T[]> {
+  if (itemIds.length === 0) return [];
+  if (itemIds.length <= IN_CHUNK_SIZE) {
+    const { data } = await build(itemIds);
+    return data || [];
+  }
+  const results: T[] = [];
+  for (let i = 0; i < itemIds.length; i += IN_CHUNK_SIZE) {
+    const { data } = await build(itemIds.slice(i, i + IN_CHUNK_SIZE));
+    if (data) results.push(...data);
+  }
+  return results;
+}
+
+async function getAllItemIdsForCollection(
+  client: SupabaseClient,
+  collectionId: string,
+  isPublished: boolean,
+): Promise<string[]> {
+  let query = client
+    .from('collection_items')
+    .select('id')
+    .eq('collection_id', collectionId)
+    .eq('is_published', isPublished)
+    .is('deleted_at', null);
+
+  if (isPublished) {
+    query = query.eq('is_publishable', true);
+  }
+
+  const { data, error } = await query;
+  if (error) throw new Error(`Failed to fetch item IDs: ${error.message}`);
+  return data?.map(d => d.id) || [];
+}
+
+async function getIdsMatchingFilter(
+  client: SupabaseClient,
+  filter: FilterCondition,
+  isPublished: boolean,
+  allItemIds: string[],
+): Promise<Set<string>> {
+  const { fieldId, operator, value } = filter;
+  const allSet = new Set(allItemIds);
+
+  const selectIds = (chunk: string[]) =>
+    client
+      .from('collection_item_values')
+      .select('item_id')
+      .eq('field_id', fieldId)
+      .eq('is_published', isPublished)
+      .is('deleted_at', null)
+      .in('item_id', chunk);
+
+  const selectIdsAndValues = (chunk: string[]) =>
+    client
+      .from('collection_item_values')
+      .select('item_id, value')
+      .eq('field_id', fieldId)
+      .eq('is_published', isPublished)
+      .is('deleted_at', null)
+      .in('item_id', chunk);
+
+  switch (operator) {
+    // --- Text positive ---
+    case 'contains': {
+      const data = await chunkedQuery(
+        chunk => selectIds(chunk).ilike('value', `%${value}%`),
+        allItemIds,
+      );
+      return new Set(data.map(d => d.item_id));
+    }
+    case 'is': {
+      const data = await chunkedQuery(
+        chunk => selectIds(chunk).ilike('value', value),
+        allItemIds,
+      );
+      return new Set(data.map(d => d.item_id));
+    }
+    case 'starts_with': {
+      const data = await chunkedQuery(
+        chunk => selectIds(chunk).ilike('value', `${value}%`),
+        allItemIds,
+      );
+      return new Set(data.map(d => d.item_id));
+    }
+    case 'ends_with': {
+      const data = await chunkedQuery(
+        chunk => selectIds(chunk).ilike('value', `%${value}`),
+        allItemIds,
+      );
+      return new Set(data.map(d => d.item_id));
+    }
+
+    // --- Text negative (complement) ---
+    case 'does_not_contain': {
+      const data = await chunkedQuery(
+        chunk => selectIds(chunk).ilike('value', `%${value}%`),
+        allItemIds,
+      );
+      const matchIds = new Set(data.map(d => d.item_id));
+      return new Set([...allSet].filter(id => !matchIds.has(id)));
+    }
+    case 'is_not': {
+      const data = await chunkedQuery(
+        chunk => selectIds(chunk).ilike('value', value),
+        allItemIds,
+      );
+      const matchIds = new Set(data.map(d => d.item_id));
+      return new Set([...allSet].filter(id => !matchIds.has(id)));
+    }
+
+    // --- Presence ---
+    case 'is_empty':
+    case 'is_not_present': {
+      const data = await chunkedQuery(
+        chunk => selectIds(chunk).neq('value', ''),
+        allItemIds,
+      );
+      const nonEmptyIds = new Set(data.map(d => d.item_id));
+      return new Set([...allSet].filter(id => !nonEmptyIds.has(id)));
+    }
+    case 'is_not_empty':
+    case 'is_present':
+    case 'exists': {
+      const data = await chunkedQuery(
+        chunk => selectIds(chunk).neq('value', ''),
+        allItemIds,
+      );
+      return new Set(data.map(d => d.item_id));
+    }
+    case 'does_not_exist': {
+      const data = await chunkedQuery(
+        chunk => selectIds(chunk).neq('value', ''),
+        allItemIds,
+      );
+      const existIds = new Set(data.map(d => d.item_id));
+      return new Set([...allSet].filter(id => !existIds.has(id)));
+    }
+
+    // --- Numeric ---
+    case 'gt':
+    case 'gte':
+    case 'lt':
+    case 'lte': {
+      const filterNum = parseFloat(value);
+      if (isNaN(filterNum)) return new Set();
+      const data = await chunkedQuery(
+        chunk => selectIdsAndValues(chunk).neq('value', ''),
+        allItemIds,
+      );
+      const result = new Set<string>();
+      for (const row of data) {
+        const num = parseFloat(String(row.value ?? ''));
+        if (isNaN(num)) continue;
+        if (operator === 'gt' && num > filterNum) result.add(row.item_id);
+        else if (operator === 'gte' && num >= filterNum) result.add(row.item_id);
+        else if (operator === 'lt' && num < filterNum) result.add(row.item_id);
+        else if (operator === 'lte' && num <= filterNum) result.add(row.item_id);
+      }
+      return result;
+    }
+
+    // --- Date ---
+    case 'is_before': {
+      const filterDate = new Date(value).getTime();
+      if (isNaN(filterDate)) return new Set();
+      const data = await chunkedQuery(
+        chunk => selectIdsAndValues(chunk).neq('value', ''),
+        allItemIds,
+      );
+      const result = new Set<string>();
+      for (const row of data) {
+        const d = new Date(String(row.value)).getTime();
+        if (!isNaN(d) && d < filterDate) result.add(row.item_id);
+      }
+      return result;
+    }
+    case 'is_after': {
+      const filterDate = new Date(value).getTime();
+      if (isNaN(filterDate)) return new Set();
+      const data = await chunkedQuery(
+        chunk => selectIdsAndValues(chunk).neq('value', ''),
+        allItemIds,
+      );
+      const result = new Set<string>();
+      for (const row of data) {
+        const d = new Date(String(row.value)).getTime();
+        if (!isNaN(d) && d > filterDate) result.add(row.item_id);
+      }
+      return result;
+    }
+    case 'is_between': {
+      const startDate = new Date(value).getTime();
+      const endDate = new Date(filter.value2 || '').getTime();
+      if (isNaN(startDate) || isNaN(endDate)) return new Set();
+      const data = await chunkedQuery(
+        chunk => selectIdsAndValues(chunk).neq('value', ''),
+        allItemIds,
+      );
+      const result = new Set<string>();
+      for (const row of data) {
+        const d = new Date(String(row.value)).getTime();
+        if (!isNaN(d) && d >= startDate && d <= endDate) result.add(row.item_id);
+      }
+      return result;
+    }
+
+    // --- Reference ---
+    case 'is_one_of': {
+      try {
+        const allowedIds = JSON.parse(value || '[]');
+        if (!Array.isArray(allowedIds)) return new Set();
+        const data = await chunkedQuery(chunk => selectIdsAndValues(chunk), allItemIds);
+        const result = new Set<string>();
+        for (const row of data) {
+          const val = String(row.value ?? '');
+          if (allowedIds.includes(val)) { result.add(row.item_id); continue; }
+          try {
+            const arr = JSON.parse(val);
+            if (Array.isArray(arr) && arr.some((id: string) => allowedIds.includes(id))) {
+              result.add(row.item_id);
+            }
+          } catch { /* not JSON */ }
+        }
+        return result;
+      } catch { return new Set(); }
+    }
+    case 'is_not_one_of': {
+      try {
+        const excludedIds = JSON.parse(value || '[]');
+        if (!Array.isArray(excludedIds)) return allSet;
+        const data = await chunkedQuery(chunk => selectIdsAndValues(chunk), allItemIds);
+        const excludeSet = new Set<string>();
+        for (const row of data) {
+          const val = String(row.value ?? '');
+          if (excludedIds.includes(val)) { excludeSet.add(row.item_id); continue; }
+          try {
+            const arr = JSON.parse(val);
+            if (Array.isArray(arr) && arr.some((id: string) => excludedIds.includes(id))) {
+              excludeSet.add(row.item_id);
+            }
+          } catch { /* not JSON */ }
+        }
+        return new Set([...allSet].filter(id => !excludeSet.has(id)));
+      } catch { return allSet; }
+    }
+
+    // --- Multi-reference ---
+    case 'has_items': {
+      const data = await chunkedQuery(
+        chunk => selectIdsAndValues(chunk).neq('value', ''),
+        allItemIds,
+      );
+      const result = new Set<string>();
+      for (const row of data) {
+        try {
+          const arr = JSON.parse(String(row.value));
+          if (Array.isArray(arr) && arr.length > 0) result.add(row.item_id);
+        } catch {
+          if (row.value) result.add(row.item_id);
+        }
+      }
+      return result;
+    }
+    case 'has_no_items': {
+      const data = await chunkedQuery(chunk => selectIdsAndValues(chunk), allItemIds);
+      const hasItemsSet = new Set<string>();
+      for (const row of data) {
+        try {
+          const arr = JSON.parse(String(row.value));
+          if (Array.isArray(arr) && arr.length > 0) hasItemsSet.add(row.item_id);
+        } catch {
+          if (row.value) hasItemsSet.add(row.item_id);
+        }
+      }
+      return new Set([...allSet].filter(id => !hasItemsSet.has(id)));
+    }
+    case 'contains_all_of': {
+      try {
+        const requiredIds = JSON.parse(value || '[]');
+        if (!Array.isArray(requiredIds)) return new Set();
+        const data = await chunkedQuery(chunk => selectIdsAndValues(chunk), allItemIds);
+        const result = new Set<string>();
+        for (const row of data) {
+          try {
+            const arr = JSON.parse(String(row.value));
+            if (Array.isArray(arr) && requiredIds.every((id: string) => arr.includes(id))) {
+              result.add(row.item_id);
+            }
+          } catch { /* skip */ }
+        }
+        return result;
+      } catch { return new Set(); }
+    }
+    case 'contains_exactly': {
+      try {
+        const requiredIds = JSON.parse(value || '[]');
+        if (!Array.isArray(requiredIds)) return new Set();
+        const data = await chunkedQuery(chunk => selectIdsAndValues(chunk), allItemIds);
+        const result = new Set<string>();
+        for (const row of data) {
+          try {
+            const arr = JSON.parse(String(row.value));
+            if (
+              Array.isArray(arr) &&
+              arr.length === requiredIds.length &&
+              requiredIds.every((id: string) => arr.includes(id))
+            ) {
+              result.add(row.item_id);
+            }
+          } catch { /* skip */ }
+        }
+        return result;
+      } catch { return new Set(); }
+    }
+
+    default: {
+      const data = await chunkedQuery(
+        chunk => selectIds(chunk).ilike('value', `%${value}%`),
+        allItemIds,
+      );
+      return new Set(data.map(d => d.item_id));
+    }
+  }
+}
+
+async function getFilteredItemIds(
+  collectionId: string,
+  isPublished: boolean,
+  filters: FilterCondition[],
+): Promise<{ matchingIds: string[]; total: number }> {
+  const client = await getSupabaseAdmin();
+  if (!client) throw new Error('Supabase client not configured');
+
+  const allItemIds = await getAllItemIdsForCollection(client, collectionId, isPublished);
+
+  if (filters.length === 0) {
+    return { matchingIds: allItemIds, total: allItemIds.length };
+  }
+
+  let currentIds = new Set(allItemIds);
+
+  for (const filter of filters) {
+    if (currentIds.size === 0) break;
+    const matchingForFilter = await getIdsMatchingFilter(client, filter, isPublished, [...currentIds]);
+    currentIds = new Set([...currentIds].filter(id => matchingForFilter.has(id)));
+  }
+
+  return { matchingIds: [...currentIds], total: currentIds.size };
+}
+
+/**
+ * POST /ycode/api/collections/[id]/items/filter
+ *
+ * Body (JSON):
+ * - layerTemplate: Layer[]
+ * - collectionLayerId: string
+ * - filters: Array<{ fieldId, operator, value, value2? }>
+ * - sortBy?: string
+ * - sortOrder?: 'asc' | 'desc'
+ * - limit?: number
+ * - offset?: number
+ * - localeCode?: string
+ */
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  try {
+    const { id: collectionId } = await params;
+    const body = await request.json();
+    const {
+      layerTemplate,
+      collectionLayerId,
+      filters = [],
+      sortBy,
+      sortOrder = 'asc',
+      limit,
+      offset = 0,
+      localeCode,
+    } = body;
+
+    if (!layerTemplate || !Array.isArray(layerTemplate)) {
+      return noCache({ error: 'layerTemplate is required and must be an array' }, 400);
+    }
+    if (!collectionLayerId) {
+      return noCache({ error: 'collectionLayerId is required' }, 400);
+    }
+
+    const { matchingIds, total: filteredTotal } = await getFilteredItemIds(
+      collectionId,
+      true,
+      filters,
+    );
+
+    if (matchingIds.length === 0) {
+      return noCache({
+        data: { html: '', total: 0, count: 0, offset, hasMore: false },
+      });
+    }
+
+    const { items: rawItems } = await getItemsByCollectionId(collectionId, true, {
+      itemIds: matchingIds,
+    });
+    const valuesByItem = await getValuesByItemIds(
+      rawItems.map(i => i.id),
+      true,
+    );
+    const items: CollectionItemWithValues[] = rawItems.map(item => ({
+      ...item,
+      values: valuesByItem[item.id] || {},
+    }));
+
+    if (sortBy && sortBy !== 'none') {
+      if (sortBy === 'manual') {
+        items.sort((a, b) => a.manual_order - b.manual_order);
+      } else if (sortBy === 'random') {
+        items.sort(() => Math.random() - 0.5);
+      } else {
+        items.sort((a, b) => {
+          const aVal = a.values[sortBy] || '';
+          const bVal = b.values[sortBy] || '';
+          const aNum = parseFloat(String(aVal));
+          const bNum = parseFloat(String(bVal));
+          if (!isNaN(aNum) && !isNaN(bNum)) {
+            return sortOrder === 'desc' ? bNum - aNum : aNum - bNum;
+          }
+          return sortOrder === 'desc'
+            ? String(bVal).localeCompare(String(aVal))
+            : String(aVal).localeCompare(String(bVal));
+        });
+      }
+    }
+
+    const pageOffset = Math.max(0, offset || 0);
+    const pageLimit = limit && limit > 0 ? limit : items.length;
+    const paginatedItems = items.slice(pageOffset, pageOffset + pageLimit);
+    const hasMore = pageOffset + paginatedItems.length < items.length;
+
+    const collectionFields = await getFieldsByCollectionId(collectionId, true, { excludeComputed: true });
+    const slugField = collectionFields.find(f => f.key === 'slug');
+    const collectionItemSlugs: Record<string, string> = {};
+    if (slugField) {
+      for (const item of paginatedItems) {
+        if (item.values[slugField.id]) {
+          collectionItemSlugs[item.id] = item.values[slugField.id];
+        }
+      }
+    }
+
+    const [pages, folders] = await Promise.all([
+      getAllPages(),
+      getAllPageFolders(),
+    ]);
+
+    let locale = null;
+    let translations: Record<string, any> | undefined;
+    if (localeCode) {
+      const localeData = await loadTranslationsForLocale(localeCode, true);
+      locale = localeData.locale;
+      translations = localeData.translations;
+    }
+
+    const html = await renderCollectionItemsToHtml(
+      paginatedItems,
+      layerTemplate as Layer[],
+      collectionId,
+      collectionLayerId,
+      true,
+      pages,
+      folders,
+      collectionItemSlugs,
+      locale,
+      translations,
+    );
+
+    return noCache({
+      data: {
+        html,
+        total: filteredTotal,
+        count: paginatedItems.length,
+        offset: pageOffset,
+        hasMore,
+      },
+    });
+  } catch (error) {
+    console.error('Error filtering collection items:', error);
+    return noCache(
+      { error: error instanceof Error ? error.message : 'Failed to filter items' },
+      500,
+    );
+  }
+}
