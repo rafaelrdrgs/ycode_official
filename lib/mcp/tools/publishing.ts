@@ -12,6 +12,7 @@ import { publishCollectionWithItems } from '@/lib/services/collectionService';
 import { publishLocalisation } from '@/lib/services/localisationService';
 import { publishFolders } from '@/lib/services/folderService';
 import { publishCSS, savePublishedAt } from '@/lib/services/settingsService';
+import { generateAndSaveDraftCSS } from '@/lib/server/cssGenerator';
 import { clearAllCache } from '@/lib/services/cacheService';
 
 export function registerPublishingTools(server: McpServer) {
@@ -134,8 +135,11 @@ export function registerPublishingTools(server: McpServer) {
         changes.translations = locResult.translations;
       } catch { /* non-fatal */ }
 
-      // Publish CSS
-      try { await publishCSS(); } catch { /* non-fatal */ }
+      // Regenerate draft CSS from all current layers, then publish it
+      try {
+        await generateAndSaveDraftCSS();
+        await publishCSS();
+      } catch { /* non-fatal */ }
 
       // Clear cache
       try { await clearAllCache(); } catch { /* non-fatal */ }
