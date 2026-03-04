@@ -321,7 +321,7 @@ export function removeConflictingClasses(
 
   return classes.filter(cls => {
     // Strip breakpoint and state prefixes for helper class detection
-    const baseClass = cls.replace(/^(max-lg:|max-md:|lg:|md:)?(hover:|focus:|active:|disabled:|visited:)?/, '');
+    const baseClass = cls.replace(/^(max-lg:|max-md:|lg:|md:)?(hover:|focus:|active:|disabled:|visited:|current:)?/, '');
 
     // Special handling for text color property
     // Remove gradient-related classes (bg-[gradient], bg-clip-text, text-transparent)
@@ -401,7 +401,7 @@ export function removeConflictingClasses(
  */
 function isStandardColorClass(className: string): boolean {
   // Strip prefixes
-  const baseClass = className.replace(/^(max-lg:|max-md:|lg:|md:)?(hover:|focus:|active:|disabled:|visited:)?/, '');
+  const baseClass = className.replace(/^(max-lg:|max-md:|lg:|md:)?(hover:|focus:|active:|disabled:|visited:|current:)?/, '');
 
   // Common Tailwind color patterns
   const colorPattern = /^(text|bg|border|ring|outline|decoration|shadow|from|via|to|caret|accent|divide|placeholder)-(slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)(-\d+)?$/;
@@ -414,7 +414,7 @@ function isStandardColorClass(className: string): boolean {
  */
 function isArbitraryColorClass(className: string, property: string): boolean {
   // Strip prefixes
-  const baseClass = className.replace(/^(max-lg:|max-md:|lg:|md:)?(hover:|focus:|active:|disabled:|visited:)?/, '');
+  const baseClass = className.replace(/^(max-lg:|max-md:|lg:|md:)?(hover:|focus:|active:|disabled:|visited:|current:)?/, '');
 
   // Check based on property
   if (property === 'color' && baseClass.startsWith('text-[')) {
@@ -837,7 +837,7 @@ export function getAffectedProperties(className: string): string[] {
   const properties: string[] = [];
 
   // Strip breakpoint and state prefixes for helper class detection
-  const baseClass = className.replace(/^(max-lg:|max-md:|lg:|md:)?(hover:|focus:|active:|disabled:|visited:)?/, '');
+  const baseClass = className.replace(/^(max-lg:|max-md:|lg:|md:)?(hover:|focus:|active:|disabled:|visited:|current:)?/, '');
 
   // bg-clip-* classes affect backgroundClip; bg-clip-text also participates in text gradients
   if (baseClass.startsWith('bg-clip-')) {
@@ -1017,12 +1017,12 @@ export function classesToDesign(classes: string | string[]): Layer['design'] {
     // CRITICAL FIX: Skip state-specific classes (they should not be in design object)
     // The design object should only contain base/neutral values
     // State-specific values are handled by getInheritedValue based on activeUIState
-    if (cls.match(/^(hover|focus|active|disabled|visited):/)) {
+    if (cls.match(/^(hover|focus|active|disabled|visited|current):/)) {
       return; // Skip this class
     }
 
     // Also skip breakpoint+state combinations
-    if (cls.match(/^(max-lg|max-md|lg|md):(hover|focus|active|disabled|visited):/)) {
+    if (cls.match(/^(max-lg|max-md|lg|md):(hover|focus|active|disabled|visited|current):/)) {
       return; // Skip this class
     }
 
@@ -1472,7 +1472,7 @@ export const UI_STATE_CONFIG = {
   focus: { prefix: 'focus:' },
   active: { prefix: 'active:' },
   disabled: { prefix: 'disabled:' },
-  current: { prefix: 'visited:' }, // Tailwind uses 'visited' for current/visited state
+  current: { prefix: 'current:' },
 } as const;
 
 /**
@@ -1524,6 +1524,9 @@ export function parseFullClass(className: string): {
   } else if (remaining.startsWith('disabled:')) {
     uiState = 'disabled';
     remaining = remaining.slice(9);
+  } else if (remaining.startsWith('current:')) {
+    uiState = 'current';
+    remaining = remaining.slice(8);
   } else if (remaining.startsWith('visited:')) {
     uiState = 'current';
     remaining = remaining.slice(8);
@@ -1621,7 +1624,7 @@ function isImageValue(value: string): boolean {
  */
 function shouldIncludeClassForProperty(className: string, property: string, pattern: RegExp): boolean {
   // Strip breakpoint and state prefixes for helper class detection
-  const baseClass = className.replace(/^(max-lg:|max-md:|lg:|md:)?(hover:|focus:|active:|disabled:|visited:)?/, '');
+  const baseClass = className.replace(/^(max-lg:|max-md:|lg:|md:)?(hover:|focus:|active:|disabled:|visited:|current:)?/, '');
 
   // Special handling for text color property
   // Include gradient-related classes (bg-[gradient], text-transparent) but NOT bg-clip-text
@@ -1793,12 +1796,12 @@ export function getInheritedValue(
         if (!cls.startsWith(bpPrefix)) return false;
         const afterBp = cls.slice(bpPrefix.length);
         // Must not have a state prefix
-        if (afterBp.match(/^(hover|focus|active|disabled|visited):/)) return false;
+        if (afterBp.match(/^(hover|focus|active|disabled|visited|current):/)) return false;
         // Smart filtering for text-[...] classes
         return shouldIncludeClassForProperty(afterBp, property, pattern);
       } else {
         // Desktop: no breakpoint prefix, no state prefix
-        if (cls.match(/^(max-lg|max-md|hover|focus|active|disabled|visited):/)) return false;
+        if (cls.match(/^(max-lg|max-md|hover|focus|active|disabled|visited|current):/)) return false;
         // Smart filtering for text-[...] classes
         return shouldIncludeClassForProperty(cls, property, pattern);
       }
@@ -1973,7 +1976,7 @@ export function getRemovedPropertyClasses(
           // Find all style classes that match this property pattern
           for (const styleClass of styleClasses) {
             // Strip prefixes for pattern matching
-            const baseClass = styleClass.replace(/^(max-lg:|max-md:|lg:|md:)?(hover:|focus:|active:|disabled:|visited:)?/, '');
+            const baseClass = styleClass.replace(/^(max-lg:|max-md:|lg:|md:)?(hover:|focus:|active:|disabled:|visited:|current:)?/, '');
 
             // Special handling for text-[...] classes
             if (baseClass.startsWith('text-[')) {

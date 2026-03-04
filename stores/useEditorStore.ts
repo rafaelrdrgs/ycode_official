@@ -144,6 +144,9 @@ interface EditorStoreWithHistory extends EditorState {
   dragElementSource: 'elements' | 'layouts' | 'components' | null;
   dragPosition: DragPosition | null;
   canvasDropTarget: CanvasDropTarget | null;
+  // Slider transition state (hides outlines during slide animation)
+  isSliderAnimating: boolean;
+  setSliderAnimating: (value: boolean) => void;
   // Canvas sibling reorder state
   isDraggingLayerOnCanvas: boolean;
   draggedLayerId: string | null;
@@ -216,6 +219,8 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   dragElementSource: null,
   dragPosition: null,
   canvasDropTarget: null,
+  isSliderAnimating: false,
+  setSliderAnimating: (value) => set({ isSliderAnimating: value }),
   // Canvas sibling reorder initial state
   isDraggingLayerOnCanvas: false,
   draggedLayerId: null,

@@ -144,13 +144,27 @@ function CanvasContent({
     [editingComponentId]
   );
 
-  // Handle click on canvas body (select body when clicking on empty space)
-  const handleBodyClick = (event: React.MouseEvent) => {
-    // Only select body if clicking directly on it (not on a child layer)
-    if (event.target === event.currentTarget) {
-      onLayerClick('body', event);
-    }
-  };
+  // Select body layer when clicking on empty canvas space.
+  // The #canvas-body div uses display:contents so it has no box — clicks on
+  // empty space land on the iframe <body>, which is outside the React root.
+  // We attach a native listener on the iframe body to handle this.
+  useEffect(() => {
+    if (!bodyRef.current) return;
+    const iframeBody = bodyRef.current.ownerDocument.body;
+
+    const handleBodyClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      const isCanvasChrome = target === iframeBody
+        || target.id === 'canvas-mount'
+        || target.id === 'canvas-body';
+      if (isCanvasChrome) {
+        onLayerClick('body');
+      }
+    };
+
+    iframeBody.addEventListener('click', handleBodyClick);
+    return () => iframeBody.removeEventListener('click', handleBodyClick);
+  }, [onLayerClick]);
 
   const bodyLayer = layers.find(l => l.id === 'body');
   const bodyClasses = bodyLayer ? getClassesString(bodyLayer) : '';
@@ -183,7 +197,6 @@ function CanvasContent({
       id="canvas-body"
       data-layer-id="body"
       className="contents"
-      onClick={handleBodyClick}
     >
       <LayerRenderer
         layers={childLayers}
@@ -320,6 +333,12 @@ export default function Canvas({
       doc.open();
       doc.write(getCanvasIframeHtml('canvas-mount'));
       doc.close();
+
+      // Load Swiper CSS for slider elements in the canvas iframe
+      const swiperCss = doc.createElement('link');
+      swiperCss.rel = 'stylesheet';
+      swiperCss.href = 'https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css';
+      doc.head.appendChild(swiperCss);
 
       // Load GSAP for animations in the canvas iframe
       const gsapScript = doc.createElement('script');
