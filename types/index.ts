@@ -1348,6 +1348,12 @@ export interface FormSummary {
 // Font Types
 export type FontType = 'google' | 'custom' | 'default';
 
+export interface FontAxis {
+  tag: string;
+  start: number;
+  end: number;
+}
+
 export interface Font {
   id: string;
   name: string; // Slug-friendly name (e.g., "open-sans")
@@ -1356,6 +1362,7 @@ export interface Font {
   variants: string[]; // Available variants (e.g., ["regular", "italic", "700"])
   weights: string[]; // Available weights (e.g., ["400", "700"])
   category: string; // Font category (e.g., "sans-serif", "serif")
+  axes?: FontAxis[] | null; // Variable font axes (e.g., opsz, wdth)
   kind?: string | null; // Font format for custom fonts (e.g., "woff2", "truetype")
   url?: string | null; // Public URL for custom font file
   storage_path?: string | null; // Storage path for custom font file
@@ -1374,6 +1381,7 @@ export interface CreateFontData {
   variants: string[];
   weights: string[];
   category: string;
+  axes?: FontAxis[] | null;
   kind?: string | null;
   url?: string | null;
   storage_path?: string | null;
