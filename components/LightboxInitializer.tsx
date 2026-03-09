@@ -259,7 +259,7 @@ export default function LightboxInitializer() {
       `}</style>
 
       {/* Header: pagination + close */}
-      <div className="flex shrink-0 items-center justify-between px-4 pb-1 pt-4 md:px-6 md:pt-5">
+      <div className="flex shrink-0 items-center justify-between px-4 py-4 md:px-6 md:py-5">
         {showPagination && files.length > 1 ? (
           <div
             className={`lightbox-pagination text-sm tabular-nums ${isDark ? 'text-white' : 'text-black'}`}
