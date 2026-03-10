@@ -11,7 +11,7 @@ import React, { useState, useMemo, useCallback } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
 import Icon from '@/components/ui/icon';
 import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group';
 import {
@@ -427,9 +427,9 @@ export default function SliderSettings({ layer, onLayerUpdate, allLayers }: Slid
         {/* Behavior toggles */}
         <div className="grid grid-cols-3 items-start gap-2">
           <Label variant="muted">Behavior</Label>
-          <div className="col-span-2 flex flex-col gap-3">
+          <div className="col-span-2 flex flex-col gap-2">
             <div className="flex items-center gap-2">
-              <Switch
+              <Checkbox
                 id="slider-navigation"
                 checked={settings.navigation}
                 onCheckedChange={(checked) => updateSetting('navigation', checked)}
@@ -444,7 +444,7 @@ export default function SliderSettings({ layer, onLayerUpdate, allLayers }: Slid
             </div>
             {settings.autoplay && (
               <div className="flex items-center gap-2">
-                <Switch
+                <Checkbox
                   id="slider-pause-hover"
                   checked={settings.pauseOnHover}
                   onCheckedChange={(checked) => updateSetting('pauseOnHover', checked)}
@@ -460,7 +460,7 @@ export default function SliderSettings({ layer, onLayerUpdate, allLayers }: Slid
             )}
             {EFFECTS_WITH_PER_VIEW.has(settings.animationEffect) && settings.groupSlide > 1 && (
               <div className="flex items-center gap-2">
-                <Switch
+                <Checkbox
                   id="slider-centered"
                   checked={settings.centered}
                   onCheckedChange={(checked) => updateSetting('centered', checked)}
@@ -475,7 +475,7 @@ export default function SliderSettings({ layer, onLayerUpdate, allLayers }: Slid
               </div>
             )}
             <div className="flex items-center gap-2">
-              <Switch
+              <Checkbox
                 id="slider-touch"
                 checked={settings.touchEvents}
                 onCheckedChange={(checked) => {
@@ -494,7 +494,7 @@ export default function SliderSettings({ layer, onLayerUpdate, allLayers }: Slid
             </div>
             {settings.touchEvents && (
               <div className="flex items-center gap-2">
-                <Switch
+                <Checkbox
                   id="slider-slide-to-clicked"
                   checked={settings.slideToClicked}
                   onCheckedChange={(checked) => updateSetting('slideToClicked', checked)}
@@ -509,7 +509,7 @@ export default function SliderSettings({ layer, onLayerUpdate, allLayers }: Slid
               </div>
             )}
             <div className="flex items-center gap-2">
-              <Switch
+              <Checkbox
                 id="slider-mousewheel"
                 checked={settings.mousewheel}
                 onCheckedChange={(checked) => updateSetting('mousewheel', checked)}

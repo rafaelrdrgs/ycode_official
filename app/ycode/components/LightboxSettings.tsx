@@ -38,7 +38,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import SettingsPanel from './SettingsPanel';
 import ToggleGroup from './ToggleGroup';
@@ -505,9 +505,9 @@ export default function LightboxSettings({
             <div>
               <Label variant="muted">Behavior</Label>
             </div>
-            <div className="col-span-2 flex flex-col gap-3">
+            <div className="col-span-2 flex flex-col gap-2">
               <div className="flex items-center gap-2">
-                <Switch
+                <Checkbox
                   id="lightbox-thumbnails"
                   checked={settings.thumbnails}
                   onCheckedChange={(v) => updateSetting('thumbnails', v)}
@@ -518,7 +518,7 @@ export default function LightboxSettings({
                 >Show thumbnails</Label>
               </div>
               <div className="flex items-center gap-2">
-                <Switch
+                <Checkbox
                   id="lightbox-navigation"
                   checked={settings.navigation}
                   onCheckedChange={(v) => updateSetting('navigation', v)}
@@ -529,7 +529,7 @@ export default function LightboxSettings({
                 >Show navigation</Label>
               </div>
               <div className="flex items-center gap-2">
-                <Switch
+                <Checkbox
                   id="lightbox-pagination"
                   checked={settings.pagination}
                   onCheckedChange={(v) => updateSetting('pagination', v)}
@@ -540,7 +540,7 @@ export default function LightboxSettings({
                 >Show pagination</Label>
               </div>
               <div className="flex items-center gap-2">
-                <Switch
+                <Checkbox
                   id="lightbox-zoom"
                   checked={settings.zoom}
                   onCheckedChange={(v) => updateSetting('zoom', v)}
@@ -551,7 +551,7 @@ export default function LightboxSettings({
                 >Pinch to zoom</Label>
               </div>
               <div className="flex items-center gap-2">
-                <Switch
+                <Checkbox
                   id="lightbox-double-tap-zoom"
                   checked={settings.doubleTapZoom}
                   onCheckedChange={(v) => updateSetting('doubleTapZoom', v)}
@@ -562,7 +562,7 @@ export default function LightboxSettings({
                 >Double-tap zoom</Label>
               </div>
               <div className="flex items-center gap-2">
-                <Switch
+                <Checkbox
                   id="lightbox-mousewheel"
                   checked={settings.mousewheel}
                   onCheckedChange={(v) => updateSetting('mousewheel', v)}

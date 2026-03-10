@@ -33,7 +33,7 @@ import {
   SelectValue
 } from '@/components/ui/select';
 import * as SelectPrimitive from '@radix-ui/react-select';
-import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Spinner } from '@/components/ui/spinner';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -1516,10 +1516,10 @@ const PageSettingsPanel = React.forwardRef<PageSettingsPanelHandle, PageSettings
                           Restrict access to this page. Setting a password will override any password set on a parent folder. Passwords are case-sensitive.
                         </FieldDescription>
                       </FieldContent>
-                      <Switch
+                      <Checkbox
                         id="passwordProtected"
                         checked={authEnabled}
-                        onCheckedChange={setAuthEnabled}
+                        onCheckedChange={(checked) => setAuthEnabled(checked === true)}
                         disabled={isErrorPage}
                       />
                     </Field>
@@ -1565,11 +1565,11 @@ const PageSettingsPanel = React.forwardRef<PageSettingsPanelHandle, PageSettings
                         </FieldDescription>
                       </FieldContent>
 
-                      <Switch
+                      <Checkbox
                         id="homepage"
                         checked={isIndex}
                         disabled={isLastRootIndexPage || isErrorPage || isDynamicPage}
-                        onCheckedChange={setIsIndex}
+                        onCheckedChange={(checked) => setIsIndex(checked === true)}
                       />
                     </Field>
                   </FieldGroup>
@@ -1737,10 +1737,10 @@ const PageSettingsPanel = React.forwardRef<PageSettingsPanelHandle, PageSettings
                             </FieldDescription>
                           </FieldContent>
 
-                          <Switch
+                          <Checkbox
                             id="noindex"
                             checked={seoNoindex}
-                            onCheckedChange={setSeoNoindex}
+                            onCheckedChange={(checked) => setSeoNoindex(checked === true)}
                           />
                         </Field>
                       </>

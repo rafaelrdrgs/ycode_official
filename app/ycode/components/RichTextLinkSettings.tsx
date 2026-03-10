@@ -12,7 +12,7 @@ import React, { useState, useCallback, useMemo, useEffect } from 'react';
 
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
 import Icon, { type IconProps } from '@/components/ui/icon';
 import RichTextEditor from './RichTextEditor';
 import {
@@ -756,9 +756,9 @@ export default function RichTextLinkSettings({
           <div>
             <Label variant="muted">Behavior</Label>
           </div>
-          <div className="col-span-2 flex flex-col gap-3">
+          <div className="col-span-2 flex flex-col gap-2">
             <div className="flex items-center gap-2">
-              <Switch
+              <Checkbox
                 id="richtext-newTab"
                 checked={target === '_blank'}
                 onCheckedChange={handleTargetChange}
@@ -773,7 +773,7 @@ export default function RichTextLinkSettings({
             </div>
             {linkType === 'asset' && (
               <div className="flex items-center gap-2">
-                <Switch
+                <Checkbox
                   id="richtext-download"
                   checked={download}
                   onCheckedChange={handleDownloadChange}
@@ -788,7 +788,7 @@ export default function RichTextLinkSettings({
               </div>
             )}
             <div className="flex items-center gap-2">
-              <Switch
+              <Checkbox
                 id="richtext-nofollow"
                 checked={rel?.includes('nofollow') || false}
                 onCheckedChange={handleNofollowChange}

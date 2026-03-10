@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import TranslationRow from '@/app/ycode/components/TranslationRow';
-import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
@@ -1015,10 +1015,10 @@ export default function LocalizationContent({ children }: LocalizationContentPro
 
               return (
                 <div className="mt-1 flex items-start gap-2">
-                  <Switch
+                  <Checkbox
                     id="is-default"
                     checked={modalState.isDefaultLocale}
-                    onCheckedChange={(checked) => setModalState(prev => ({ ...prev, isDefaultLocale: checked }))}
+                    onCheckedChange={(checked) => setModalState(prev => ({ ...prev, isDefaultLocale: checked === true }))}
                     disabled={shouldDisable}
                   />
 
