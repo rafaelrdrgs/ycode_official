@@ -165,7 +165,7 @@ function ReferenceItemsSelector({
           className="w-full justify-between font-normal"
         >
           <span className="truncate text-xs">{getDisplayText()}</span>
-          <Icon name="chevronCombo" className="size-2.5 opacity-50 ml-2" />
+          <Icon name="chevronDown" className="size-2.5 opacity-50 ml-2" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent className="w-(--radix-dropdown-menu-trigger-width) min-w-50 max-h-60 overflow-y-auto" align="start">
@@ -538,7 +538,7 @@ export default function CollectionFiltersSettings({
             onValueChange={(value) => handleOperatorChange(group.id, condition.id, value as VisibilityOperator)}
           >
             <SelectTrigger>
-              <SelectValue placeholder="Select a condition..." />
+              <SelectValue placeholder="Select..." />
             </SelectTrigger>
             <SelectContent>
               <SelectGroup>

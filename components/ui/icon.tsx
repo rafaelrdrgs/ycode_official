@@ -6,7 +6,7 @@ import React from 'react';
  */
 export interface IconProps extends React.SVGProps<SVGSVGElement> {
   name: (
-    'x' | 'layers' | 'database' | 'plus' | 'chevronCombo' | 'check' | 'textAlignLeft' | 'textAlignRight' | 'textAlignCenter' | 'textAlignJustify' | 'individualBorders'
+    'x' | 'layers' | 'database' | 'plus' | 'chevronCombo' | 'chevronDown' | 'check' | 'textAlignLeft' | 'textAlignRight' | 'textAlignCenter' | 'textAlignJustify' | 'individualBorders'
     | 'borders' | 'borderTopLeft' | 'letterSpacing' | 'lineHeight' | 'columns' | 'rows' | 'grid' | 'alignStart' | 'alignCenter' | 'alignEnd' | 'alignStretch' | 'verticalGap'
     | 'horizontalGap' | 'link' | 'paddingSide' | 'block' | 'section' | 'container' | 'separator' | 'image' | 'icon' | 'video' | 'text' | 'layout' | 'heading' | 'type'
     | 'file-text' | 'edit' | 'box' | 'chevronRight' | 'minSize' | 'maxSize' | 'undo' | 'redo' | 'page' | 'dynamicPage' | 'homepage' | 'folder' | 'dotsHorizontal' | 'refresh'
@@ -383,6 +383,15 @@ const ICONS: Record<IconProps['name'], React.ReactNode> = {
   chevronCombo: (
     <>
       <path d="M6.4 10.782l2.33-3.39A.25.25 0 008.526 7h-5.05a.25.25 0 00-.206.392l2.331 3.39c.166.24.48.29.7.109a.525.525 0 00.1-.11zM6.4 1.218l2.33 3.39A.25.25 0 018.526 5h-5.05a.25.25 0 01-.206-.392L5.6 1.218a.473.473 0 01.7-.109.525.525 0 01.1.11z" />
+    </>
+  ),
+  chevronDown: (
+    <>
+      <path
+        d="M2.5 4.5L6 8l3.5-3.5" fill="none"
+        stroke="currentColor" strokeWidth="1.5"
+        strokeLinecap="round" strokeLinejoin="round"
+      />
     </>
   ),
   arrowLeft: (

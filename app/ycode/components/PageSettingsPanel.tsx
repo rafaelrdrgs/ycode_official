@@ -1333,7 +1333,7 @@ const PageSettingsPanel = React.forwardRef<PageSettingsPanelHandle, PageSettings
                               onValueChange={handleCollectionChange}
                             >
                               <SelectTrigger className="w-full">
-                                <SelectValue placeholder="Select a collection" />
+                                <SelectValue placeholder="Select..." />
                               </SelectTrigger>
 
                               <SelectContent>
@@ -1359,7 +1359,7 @@ const PageSettingsPanel = React.forwardRef<PageSettingsPanelHandle, PageSettings
                               onValueChange={setSlugFieldId}
                             >
                               <SelectTrigger className="w-full">
-                                <SelectValue placeholder="Select a slug field" />
+                                <SelectValue placeholder="Select..." />
                               </SelectTrigger>
 
                               <SelectContent>

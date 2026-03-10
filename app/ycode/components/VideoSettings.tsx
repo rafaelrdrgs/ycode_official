@@ -654,7 +654,7 @@ export default function VideoSettings(props: VideoSettingsProps) {
               collections={collections || []}
               value={selectedField || currentFieldId}
               onSelect={handleFieldSelect}
-              placeholder="Select a field"
+              placeholder="Select..."
               allowedFieldTypes={VIDEO_FIELD_TYPES}
             />
           </div>

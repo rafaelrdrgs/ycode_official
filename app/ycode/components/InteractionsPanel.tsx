@@ -1224,7 +1224,7 @@ export default function InteractionsPanel({
                             ?.map(bp => BREAKPOINTS.find(b => b.value === bp)?.label || bp)
                             .join(', ') || 'No breakpoints'}
                       </span>
-                      <Icon name="chevronCombo" className="size-3 opacity-50" />
+                      <Icon name="chevronDown" className="size-3 opacity-50" />
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-40">

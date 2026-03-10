@@ -496,7 +496,7 @@ export default function AudioSettings(props: AudioSettingsProps) {
               collections={collections || []}
               value={selectedField || currentFieldId}
               onSelect={handleFieldSelect}
-              placeholder="Select a field"
+              placeholder="Select..."
               allowedFieldTypes={AUDIO_FIELD_TYPES}
             />
           </div>

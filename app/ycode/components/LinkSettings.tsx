@@ -12,7 +12,7 @@ import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
 import Icon, { type IconProps } from '@/components/ui/icon';
 import SettingsPanel from './SettingsPanel';
 import RichTextEditor from './RichTextEditor';
@@ -187,7 +187,7 @@ export default function LinkSettings(props: LinkSettingsProps) {
     return pages.find((p) => p.id === pageId) || null;
   }, [pageId, pages]);
 
-  // Flatten layers and find all layers with attributes.id (faster than recursive traversal)
+  // Flatten layers and find all layers with a custom ID (settings.id takes priority over attributes.id)
   const findLayersWithId = useCallback((layers: Layer[]): Array<{ layer: Layer; id: string }> => {
     const result: Array<{ layer: Layer; id: string }> = [];
     const stack: Layer[] = [...layers];
@@ -195,8 +195,9 @@ export default function LinkSettings(props: LinkSettingsProps) {
     while (stack.length > 0) {
       const layer = stack.pop()!;
 
-      if (layer.attributes?.id) {
-        result.push({ layer, id: layer.attributes.id });
+      const layerId = layer.settings?.id || layer.attributes?.id;
+      if (layerId) {
+        result.push({ layer, id: layerId });
       }
 
       if (layer.children) {
@@ -722,7 +723,7 @@ export default function LinkSettings(props: LinkSettingsProps) {
       {isStandaloneMode && !useStackedLayout && typeLabel && (
         <Label variant="muted">{typeLabel}</Label>
       )}
-      <div className={useStackedLayout ? '' : 'col-span-2'}>
+      <div className={useStackedLayout ? '' : 'col-span-2 *:w-full'}>
         {linkedLinkVariable ? (
           <Button
             asChild
@@ -747,50 +748,41 @@ export default function LinkSettings(props: LinkSettingsProps) {
             </div>
           </Button>
         ) : (
-          <div className="flex items-center gap-1">
-            <Select
-              value={linkType === 'none' ? '' : linkType}
-              onValueChange={(value) => handleLinkTypeChange(value as LinkType | 'none')}
-              disabled={isLockedByOther}
+          <Select
+            value={linkType === 'none' ? '' : linkType}
+            onValueChange={(value) => handleLinkTypeChange(value as LinkType | 'none')}
+            disabled={isLockedByOther}
+          >
+            <SelectTrigger
+              onClear={linkType !== 'none'
+                ? () => handleLinkTypeChange('none')
+                : undefined}
             >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Page or URL..." />
-              </SelectTrigger>
-              <SelectContent>
-                {linkTypeOptions.map((option, index) => {
-                  if ('type' in option && option.type === 'separator') {
-                    return <SelectSeparator key={`separator-${index}`} />;
-                  }
-                  if ('value' in option) {
-                    return (
-                      <SelectItem
-                        key={option.value}
-                        value={option.value}
-                        disabled={option.disabled || isLockedByOther}
-                      >
-                        <div className="flex items-center gap-2">
-                          <Icon name={option.icon as any} className="size-3" />
-                          {option.label}
-                        </div>
-                      </SelectItem>
-                    );
-                  }
-                  return null;
-                })}
-              </SelectContent>
-            </Select>
-            {linkType !== 'none' && (
-              <Button
-                variant="ghost"
-                size="xs"
-                className="size-6 shrink-0 p-0"
-                onClick={() => handleLinkTypeChange('none')}
-                disabled={isLockedByOther}
-              >
-                <Icon name="x" className="size-2.5" />
-              </Button>
-            )}
-          </div>
+              <SelectValue placeholder="Page or URL..." />
+            </SelectTrigger>
+            <SelectContent>
+              {linkTypeOptions.map((option, index) => {
+                if ('type' in option && option.type === 'separator') {
+                  return <SelectSeparator key={`separator-${index}`} />;
+                }
+                if ('value' in option) {
+                  return (
+                    <SelectItem
+                      key={option.value}
+                      value={option.value}
+                      disabled={option.disabled || isLockedByOther}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Icon name={option.icon as any} className="size-3" />
+                        {option.label}
+                      </div>
+                    </SelectItem>
+                  );
+                }
+                return null;
+              })}
+            </SelectContent>
+          </Select>
         )}
       </div>
     </div>
@@ -908,7 +900,7 @@ export default function LinkSettings(props: LinkSettingsProps) {
                   disabled={isLockedByOther || loadingItems}
                 >
                   <SelectTrigger className="w-full">
-                    <SelectValue placeholder={loadingItems ? 'Loading...' : 'Select a CMS item'} />
+                    <SelectValue placeholder={loadingItems ? 'Loading...' : 'Select...'} />
                   </SelectTrigger>
                   <SelectContent>
                     {/* Current page item option (when on a dynamic page AND linking to a dynamic page) */}
@@ -953,7 +945,7 @@ export default function LinkSettings(props: LinkSettingsProps) {
               collections={collections || []}
               value={fieldId}
               onSelect={handleFieldChange}
-              placeholder="Select a field"
+              placeholder="Select..."
               disabled={isLockedByOther}
               allowedFieldTypes={LINK_FIELD_TYPES}
             />
@@ -963,46 +955,32 @@ export default function LinkSettings(props: LinkSettingsProps) {
     </>
   );
 
-  // Anchor content (for page type always, for URL type only when behavior is shown)
-  const anchorContent = linkType !== 'none' && (linkType === 'page' || (linkType === 'url' && !hideBehavior)) && (
+  // Anchor content - only show when there are layers with IDs or an anchor is already set
+  const anchorContent = linkType !== 'none' && (linkType === 'page' || (linkType === 'url' && !hideBehavior)) && (anchorLayers.length > 0 || anchorLayerId) && (
     <div className={useStackedLayout ? 'mt-2.5' : 'grid grid-cols-3 items-center gap-2'}>
       {!isStandaloneMode && (
-        <div className="flex items-center gap-1">
-          <Label className="text-xs text-muted-foreground">Anchor</Label>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Icon name="info" className="size-3 text-foreground/80" />
-            </TooltipTrigger>
-            <TooltipContent>Layers with ID attributes are used as anchors</TooltipContent>
-          </Tooltip>
-        </div>
+        <Label variant="muted">Anchor</Label>
       )}
       {isStandaloneMode && !useStackedLayout && <Label variant="muted">Anchor</Label>}
       {useStackedLayout && <Label variant="muted" className="mb-1.5">Anchor</Label>}
 
-      <div className={useStackedLayout ? '' : 'col-span-2'}>
+      <div className={useStackedLayout ? '' : 'col-span-2 *:w-full'}>
         <Select
-          value={anchorLayerId || 'none'}
+          value={anchorLayerId || ''}
           onValueChange={handleAnchorLayerIdChange}
           disabled={isLockedByOther}
         >
-          <SelectTrigger className="w-full">
-            <SelectValue placeholder="Select anchor" />
+          <SelectTrigger
+            onClear={anchorLayerId
+              ? () => handleAnchorLayerIdChange('none')
+              : undefined}
+          >
+            <SelectValue placeholder="Select..." />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="none">
-              <div className="flex items-center gap-2">
-                <Icon name="none" className="size-3" />
-                <span>No anchor</span>
-              </div>
-            </SelectItem>
             {anchorLayers.map(({ layer: anchorLayer, id }) => (
               <SelectItem key={id} value={id}>
-                <div className="flex items-center gap-2">
-                  <Icon name={getLayerIcon(anchorLayer)} className="size-3" />
-                  <span>{getLayerName(anchorLayer)}</span>
-                  <span className="text-xs text-muted-foreground">#{id}</span>
-                </div>
+                #{id}
               </SelectItem>
             ))}
           </SelectContent>
@@ -1022,9 +1000,9 @@ export default function LinkSettings(props: LinkSettingsProps) {
           </div>
         )}
         {useStackedLayout && <Label variant="muted" className="mb-1.5">Behavior</Label>}
-        <div className={`${useStackedLayout ? '' : 'col-span-2'} flex flex-col gap-3`}>
+        <div className={`${useStackedLayout ? '' : 'col-span-2'} flex flex-col gap-2`}>
           <div className="flex items-center gap-2">
-            <Switch
+            <Checkbox
               id="newTab"
               checked={target === '_blank'}
               onCheckedChange={handleTargetChange}
@@ -1040,7 +1018,7 @@ export default function LinkSettings(props: LinkSettingsProps) {
           </div>
           {linkType === 'asset' && (
             <div className="flex items-center gap-2">
-              <Switch
+              <Checkbox
                 id="download"
                 checked={download}
                 onCheckedChange={handleDownloadChange}
@@ -1056,7 +1034,7 @@ export default function LinkSettings(props: LinkSettingsProps) {
             </div>
           )}
           <div className="flex items-center gap-2">
-            <Switch
+            <Checkbox
               id="nofollow"
               checked={rel?.includes('nofollow') || false}
               onCheckedChange={handleNofollowChange}

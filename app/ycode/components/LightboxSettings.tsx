@@ -376,7 +376,7 @@ export default function LightboxSettings({
                   collections={collections || []}
                   value={currentFieldId}
                   onSelect={handleFieldSelect}
-                  placeholder="Select image field"
+                  placeholder="Select..."
                   allowedFieldTypes={IMAGE_FIELD_TYPES}
                 />
               </div>

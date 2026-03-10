@@ -1956,7 +1956,7 @@ const RightSidebar = React.memo(function RightSidebar({
                   <div className="col-span-2 *:w-full">
                     <Select value={textTag} onValueChange={handleTextTagChange}>
                       <SelectTrigger>
-                        <SelectValue placeholder="Select tag">
+                        <SelectValue placeholder="Select...">
                           {textTag && (() => {
                             const option = textTagOptions.find(opt => opt.value === textTag);
                             return option ? option.label : textTag;
@@ -2183,7 +2183,7 @@ const RightSidebar = React.memo(function RightSidebar({
                         <Select
                           value={(() => {
                             const cv = getCollectionVariable(selectedLayer);
-                            if (!cv?.source_field_id) return 'none';
+                            if (!cv?.source_field_id) return '';
                             if (cv.source_field_type === 'inverse_reference') {
                               return `inverse:${cv.source_field_id}:${cv.id}`;
                             }
@@ -2191,18 +2191,14 @@ const RightSidebar = React.memo(function RightSidebar({
                           })()}
                           onValueChange={handleReferenceFieldChange}
                         >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select source" />
+                          <SelectTrigger
+                            onClear={getCollectionVariable(selectedLayer)?.source_field_id
+                              ? () => handleReferenceFieldChange('none')
+                              : undefined}
+                          >
+                            <SelectValue placeholder="Select..." />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectGroup>
-                              <SelectItem value="none">
-                                <span className="flex items-center gap-2">
-                                  <Icon name="none" className="size-3 text-muted-foreground shrink-0" />
-                                  No source
-                                </span>
-                              </SelectItem>
-                            </SelectGroup>
                             {parentReferenceFields.length > 0 && (
                               <SelectGroup>
                                 <SelectLabel>Reference fields</SelectLabel>
@@ -2250,21 +2246,17 @@ const RightSidebar = React.memo(function RightSidebar({
                       ) : currentPage?.is_dynamic ? (
                         /* On dynamic pages, show CMS page data fields + all collections */
                         <Select
-                          value={getDynamicPageSourceValue}
+                          value={getDynamicPageSourceValue === 'none' ? '' : getDynamicPageSourceValue}
                           onValueChange={handleDynamicPageSourceChange}
                         >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select source" />
+                          <SelectTrigger
+                            onClear={getDynamicPageSourceValue !== 'none'
+                              ? () => handleDynamicPageSourceChange('none')
+                              : undefined}
+                          >
+                            <SelectValue placeholder="Select..." />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectGroup>
-                              <SelectItem value="none">
-                                <span className="flex items-center gap-2">
-                                  <Icon name="none" className="size-3 text-muted-foreground shrink-0" />
-                                  No source
-                                </span>
-                              </SelectItem>
-                            </SelectGroup>
                             {dynamicPageReferenceFields.length > 0 && (
                               <SelectGroup>
                                 <SelectLabel>Reference fields</SelectLabel>
@@ -2329,21 +2321,17 @@ const RightSidebar = React.memo(function RightSidebar({
                       ) : (
                         /* When not inside a parent collection and not dynamic, show collections as source options */
                         <Select
-                          value={getCollectionVariable(selectedLayer)?.id || 'none'}
+                          value={getCollectionVariable(selectedLayer)?.id || ''}
                           onValueChange={handleCollectionChange}
                         >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select a collection" />
+                          <SelectTrigger
+                            onClear={getCollectionVariable(selectedLayer)?.id
+                              ? () => handleCollectionChange('none')
+                              : undefined}
+                          >
+                            <SelectValue placeholder="Select..." />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectGroup>
-                              <SelectItem value="none">
-                                <span className="flex items-center gap-2">
-                                  <Icon name="none" className="size-3 text-muted-foreground shrink-0" />
-                                  No source
-                                </span>
-                              </SelectItem>
-                            </SelectGroup>
                             <SelectGroup>
                               <SelectLabel>Collections</SelectLabel>
                               {collections.length > 0 ? (
@@ -2397,7 +2385,7 @@ const RightSidebar = React.memo(function RightSidebar({
                               onValueChange={handleSortBySelectValue}
                             >
                               <SelectTrigger ref={sortByTriggerRef}>
-                                <SelectValue placeholder="Select sorting" />
+                                <SelectValue placeholder="Select..." />
                               </SelectTrigger>
                               <SelectContent>
                                 <SelectGroup>

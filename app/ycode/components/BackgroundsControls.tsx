@@ -482,7 +482,7 @@ export default function BackgroundsControls({ layer, onLayerUpdate, activeTextSt
       collections={collections || []}
       value={bgImageVariable?.type === 'field' ? (bgImageVariable as FieldVariable).data.field_id : null}
       onSelect={handleFieldSelect}
-      placeholder="Select a field"
+      placeholder="Select..."
       allowedFieldTypes={IMAGE_FIELD_TYPES}
     />
   ), [imageFieldGroups, allFields, collections, bgImageVariable, handleFieldSelect]);

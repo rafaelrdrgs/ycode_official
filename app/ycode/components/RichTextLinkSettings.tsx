@@ -657,7 +657,7 @@ export default function RichTextLinkSettings({
                   disabled={loadingItems}
                 >
                   <SelectTrigger className="w-full">
-                    <SelectValue placeholder={loadingItems ? 'Loading...' : 'Select a CMS item'} />
+                    <SelectValue placeholder={loadingItems ? 'Loading...' : 'Select...'} />
                   </SelectTrigger>
                   <SelectContent>
                     {isDynamicPage && isCurrentPageDynamic && (
@@ -699,7 +699,7 @@ export default function RichTextLinkSettings({
               collections={collections || []}
               value={fieldId}
               onSelect={handleFieldChange}
-              placeholder="Select field"
+              placeholder="Select..."
               allowedFieldTypes={LINK_FIELD_TYPES}
             />
           </div>
@@ -726,7 +726,7 @@ export default function RichTextLinkSettings({
               disabled={false}
             >
               <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select anchor" />
+                <SelectValue placeholder="Select..." />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">

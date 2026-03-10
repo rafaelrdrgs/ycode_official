@@ -40,7 +40,7 @@ export default function UIStateSelector({ selectedLayer }: UIStateSelectorProps)
           onValueChange={(value) => setActiveTextStyleKey(value === 'default' ? null : value)}
         >
           <SelectTrigger className="w-1/2">
-            <SelectValue placeholder="Select style" />
+            <SelectValue placeholder="Select..." />
           </SelectTrigger>
           <SelectContent align="start">
             <SelectGroup>
@@ -67,7 +67,7 @@ export default function UIStateSelector({ selectedLayer }: UIStateSelectorProps)
 
       <Select value={activeUIState} onValueChange={(value) => setActiveUIState(value as UIState)}>
         <SelectTrigger className={isTextLayer ? 'w-1/2' : 'w-full'}>
-          <SelectValue placeholder="Select state" />
+          <SelectValue placeholder="Select..." />
         </SelectTrigger>
         <SelectContent align="end">
           <SelectGroup>

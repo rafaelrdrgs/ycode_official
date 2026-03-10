@@ -244,7 +244,7 @@ export default function FieldFormDialog({
                   disabled={mode === 'edit'}
                 >
                   <SelectTrigger id="field-reference-collection" className="w-full">
-                    <SelectValue placeholder="Select a collection" />
+                    <SelectValue placeholder="Select..." />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectGroup>

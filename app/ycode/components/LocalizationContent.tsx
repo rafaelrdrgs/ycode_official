@@ -527,7 +527,7 @@ export default function LocalizationContent({ children }: LocalizationContentPro
               <div>
                 <Select value={selectedContentType} onValueChange={setSelectedContentType}>
                   <SelectTrigger className="w-34">
-                    <SelectValue placeholder="Select type" />
+                    <SelectValue placeholder="Select..." />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="pages"><Icon name="page" className="size-3" /> Pages</SelectItem>

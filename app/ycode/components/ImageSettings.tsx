@@ -506,7 +506,7 @@ export default function ImageSettings(props: ImageSettingsProps) {
               collections={collections || []}
               value={selectedField || currentFieldId}
               onSelect={handleFieldSelect}
-              placeholder="Select a field"
+              placeholder="Select..."
               allowedFieldTypes={IMAGE_FIELD_TYPES}
             />
           </div>
