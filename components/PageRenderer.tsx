@@ -242,20 +242,24 @@ export default async function PageRenderer({
 
   // Fetch all assets and build resolved map
   // Use draft assets (isPublished=false) for preview mode, published assets otherwise
-  let resolvedAssets: Record<string, string> | undefined;
+  let resolvedAssets: Record<string, { url: string; width?: number | null; height?: number | null }> | undefined;
   if (layerAssetIds.size > 0) {
     try {
       const { getAssetsByIds } = await import('@/lib/repositories/assetRepository');
       const assetMap = await getAssetsByIds(Array.from(layerAssetIds), !isPreview);
       resolvedAssets = {};
       for (const [id, asset] of Object.entries(assetMap)) {
+        let url: string | undefined;
         const proxyUrl = getAssetProxyUrl(asset);
         if (proxyUrl) {
-          resolvedAssets[id] = proxyUrl;
+          url = proxyUrl;
         } else if (asset.public_url) {
-          resolvedAssets[id] = asset.public_url;
+          url = asset.public_url;
         } else if (asset.content) {
-          resolvedAssets[id] = asset.content;
+          url = asset.content;
+        }
+        if (url) {
+          resolvedAssets[id] = { url, width: asset.width, height: asset.height };
         }
       }
     } catch (error) {
