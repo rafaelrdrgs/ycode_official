@@ -1351,7 +1351,7 @@ function resolveRichTextVariables(
     const isBlockNode = (n: any) =>
       n?.type === 'paragraph' || n?.type === 'heading' ||
       n?.type === 'bulletList' || n?.type === 'orderedList' ||
-      n?.type === 'richTextComponent';
+      n?.type === 'richTextComponent' || n?.type === 'richTextImage';
     const hasBlockChildren = result.content.some(isBlockNode);
     if (hasBlockChildren) {
       const lifted: any[] = [];
@@ -2800,6 +2800,18 @@ function resolveLayerAssets(
     }
   }
 
+  // Resolve richTextImage src URLs inside Tiptap content
+  const textVar = layer.variables?.text;
+  if (textVar && 'type' in textVar && textVar.type === 'dynamic_rich_text') {
+    const resolvedContent = resolveRichTextImageAssets((textVar as any).data?.content, assetMap);
+    if (resolvedContent !== (textVar as any).data?.content) {
+      variableUpdates.text = {
+        ...textVar,
+        data: { ...(textVar as any).data, content: resolvedContent },
+      } as any;
+    }
+  }
+
   const updates: Partial<Layer> = {};
   if (Object.keys(variableUpdates).length > 0) {
     updates.variables = { ...layer.variables, ...variableUpdates };
@@ -2812,6 +2824,33 @@ function resolveLayerAssets(
   }
 
   return Object.keys(updates).length > 0 ? { ...layer, ...updates } : layer;
+}
+
+/** Recursively resolve richTextImage asset URLs in Tiptap JSON content. */
+function resolveRichTextImageAssets(
+  node: any,
+  assetMap: Record<string, { public_url: string | null; content?: string | null }>,
+): any {
+  if (!node || typeof node !== 'object') return node;
+
+  if (node.type === 'richTextImage' && node.attrs?.assetId) {
+    const asset = assetMap[node.attrs.assetId];
+    if (asset?.public_url) {
+      return { ...node, attrs: { ...node.attrs, src: asset.public_url } };
+    }
+  }
+
+  if (Array.isArray(node.content)) {
+    let changed = false;
+    const newContent = node.content.map((child: any) => {
+      const resolved = resolveRichTextImageAssets(child, assetMap);
+      if (resolved !== child) changed = true;
+      return resolved;
+    });
+    if (changed) return { ...node, content: newContent };
+  }
+
+  return node;
 }
 
 /**
@@ -2983,6 +3022,15 @@ function renderTiptapToHtml(
   // Handle hardBreak
   if (content.type === 'hardBreak') {
     return '<br>';
+  }
+
+  // Handle rich-text images
+  if (content.type === 'richTextImage') {
+    const src = content.attrs?.src ? escapeHtml(content.attrs.src) : '';
+    const alt = content.attrs?.alt ? escapeHtml(content.attrs.alt) : '';
+    const imgClass = textStyles?.richTextImage?.classes || '';
+    const classAttr = imgClass ? ` class="${escapeHtml(imgClass)}"` : '';
+    return `<img src="${src}" alt="${alt}"${classAttr} />`;
   }
 
   // Handle embedded component blocks

@@ -450,9 +450,12 @@ export function collectLayerAssetIds(
     }
   };
 
-  /** Scan rich-text marks for asset links. */
+  /** Scan rich-text marks for asset links and richTextImage nodes for asset IDs. */
   const scanRichTextMarks = (node: any): void => {
     if (!node || typeof node !== 'object') return;
+    if (node.type === 'richTextImage' && node.attrs?.assetId) {
+      addAssetId(node.attrs.assetId);
+    }
     if (Array.isArray(node.marks)) {
       for (const mark of node.marks) {
         if (mark.type === 'richTextLink') {
@@ -526,6 +529,10 @@ export function collectLayerAssetIds(
       for (const value of Object.values(layer._collectionItemValues)) {
         if (typeof value === 'string' && isValidUUID(value)) {
           assetIds.add(value);
+        }
+        // Scan rich_text values (Tiptap JSON) for embedded image assets
+        if (value && typeof value === 'object' && (value as any).type === 'doc') {
+          scanRichTextMarks(value);
         }
       }
     }

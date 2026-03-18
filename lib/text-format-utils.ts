@@ -550,6 +550,20 @@ function renderInlineContent(
       return rendered ? [rendered] : [];
     }
 
+    // Handle richTextImage nodes that may appear inline from CMS rich_text expansion
+    if (node.type === 'richTextImage') {
+      const imgProps: Record<string, any> = {
+        key,
+        src: node.attrs?.src || '',
+        alt: node.attrs?.alt || '',
+        className: getTextStyleClasses(textStyles, 'richTextImage'),
+      };
+      if (node.attrs?.assetId) {
+        imgProps['data-asset-id'] = node.attrs.assetId;
+      }
+      return [React.createElement('img', imgProps)];
+    }
+
     if (node.type === 'hardBreak') {
       return [React.createElement('br', { key })];
     }
