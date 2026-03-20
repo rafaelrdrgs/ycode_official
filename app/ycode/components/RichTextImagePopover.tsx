@@ -87,18 +87,6 @@ export default function RichTextImagePopover({
           title="Image"
           isOpen={true}
           onToggle={() => {}}
-          action={
-            <Button
-              variant="ghost"
-              size="xs"
-              onClick={() => {
-                saveAlt();
-                onOpenChange(false);
-              }}
-            >
-              <Icon name="x" className="size-3" />
-            </Button>
-          }
         >
           <div className="grid grid-cols-3">
             <Label variant="muted">ALT</Label>

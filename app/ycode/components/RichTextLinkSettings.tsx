@@ -508,53 +508,45 @@ export default function RichTextLinkSettings({
   );
 
   return (
-    <div className="space-y-3 p-2">
+    <div className="flex flex-col gap-3">
       {/* Link Type */}
       <div className="grid grid-cols-3 items-center gap-2">
         <Label className="text-xs text-muted-foreground">Link To</Label>
         <div className="col-span-2">
-          <div className="flex items-center gap-1">
-            <Select
-              value={linkType === 'none' ? '' : linkType}
-              onValueChange={(newVal) => handleLinkTypeChange(newVal as LinkType | 'none')}
+          <Select
+            value={linkType === 'none' ? '' : linkType}
+            onValueChange={(newVal) => handleLinkTypeChange(newVal as LinkType | 'none')}
+          >
+            <SelectTrigger
+              onClear={linkType !== 'none'
+                ? () => handleLinkTypeChange('none')
+                : undefined}
             >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Page or URL..." />
-              </SelectTrigger>
-              <SelectContent>
-                {linkTypeOptions.map((option, index) => {
-                  if ('type' in option && option.type === 'separator') {
-                    return <SelectSeparator key={`separator-${index}`} />;
-                  }
-                  if ('value' in option) {
-                    return (
-                      <SelectItem
-                        key={option.value}
-                        value={option.value}
-                        disabled={option.disabled}
-                      >
-                        <div className="flex items-center gap-2">
-                          <Icon name={option.icon as IconProps['name']} className="size-3" />
-                          {option.label}
-                        </div>
-                      </SelectItem>
-                    );
-                  }
-                  return null;
-                })}
-              </SelectContent>
-            </Select>
-            {linkType !== 'none' && (
-              <span
-                role="button"
-                tabIndex={0}
-                className="shrink-0 p-0.5 rounded-sm opacity-70 hover:opacity-100 transition-opacity cursor-pointer"
-                onClick={() => handleLinkTypeChange('none')}
-              >
-                <Icon name="x" className="size-2.5" />
-              </span>
-            )}
-          </div>
+              <SelectValue placeholder="Page or URL..." />
+            </SelectTrigger>
+            <SelectContent>
+              {linkTypeOptions.map((option, index) => {
+                if ('type' in option && option.type === 'separator') {
+                  return <SelectSeparator key={`separator-${index}`} />;
+                }
+                if ('value' in option) {
+                  return (
+                    <SelectItem
+                      key={option.value}
+                      value={option.value}
+                      disabled={option.disabled}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Icon name={option.icon as IconProps['name']} className="size-3" />
+                        {option.label}
+                      </div>
+                    </SelectItem>
+                  );
+                }
+                return null;
+              })}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
