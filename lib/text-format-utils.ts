@@ -442,8 +442,8 @@ function renderTextNode(
 /**
  * Render nested rich text content from a Tiptap JSON structure.
  * Used when a rich_text CMS field is inserted as an inline variable.
- * Delegates to renderBlock with useSpanForParagraphs=true since this
- * content is always nested inside another element.
+ * When useSpanForParagraphs is true (default), block elements render as spans
+ * to avoid invalid HTML nesting inside restrictive tags like <p> or <h1>.
  */
 function renderNestedRichTextContent(
   richTextValue: any,
@@ -458,6 +458,7 @@ function renderNestedRichTextContent(
   components?: Component[],
   renderComponentBlock?: RenderComponentBlockFn,
   ancestorComponentIds?: Set<string>,
+  useSpanForParagraphs = true,
 ): React.ReactNode[] {
   if (!richTextValue) {
     return [];
@@ -478,7 +479,7 @@ function renderNestedRichTextContent(
 
   if (parsed.type === 'doc' && Array.isArray(parsed.content)) {
     return parsed.content.map((block: any, blockIdx: number) =>
-      renderBlock(block, blockIdx, collectionItemData, pageCollectionItemData, textStyles, true, isEditMode, linkContext, timezone, layerDataMap, components, renderComponentBlock, ancestorComponentIds)
+      renderBlock(block, blockIdx, collectionItemData, pageCollectionItemData, textStyles, useSpanForParagraphs, isEditMode, linkContext, timezone, layerDataMap, components, renderComponentBlock, ancestorComponentIds)
     ).filter(Boolean);
   }
 
@@ -500,6 +501,7 @@ function renderInlineContent(
   components?: Component[],
   renderComponentBlock?: RenderComponentBlockFn,
   ancestorComponentIds?: Set<string>,
+  useSpanForParagraphs = true,
 ): React.ReactNode[] {
   return content.flatMap((node, idx) => {
     const key = `node-${idx}`;
@@ -537,6 +539,7 @@ function renderInlineContent(
             components,
             renderComponentBlock,
             ancestorComponentIds,
+            useSpanForParagraphs,
           );
         }
       }
@@ -699,7 +702,7 @@ function renderBlock(
     );
     const tag = hasBlockContent ? 'div' : useSpanForParagraphs ? 'span' : 'p';
 
-    return React.createElement(tag, paragraphProps, ...renderInlineContent(block.content, collectionItemData, pageCollectionItemData, textStyles, isEditMode, linkContext, timezone, layerDataMap, components, renderComponentBlock, ancestorComponentIds));
+    return React.createElement(tag, paragraphProps, ...renderInlineContent(block.content, collectionItemData, pageCollectionItemData, textStyles, isEditMode, linkContext, timezone, layerDataMap, components, renderComponentBlock, ancestorComponentIds, useSpanForParagraphs));
   }
 
   if (block.type === 'heading') {
@@ -718,7 +721,7 @@ function renderBlock(
     if (isEditMode) {
       headingProps['data-style'] = styleKey;
     }
-    return React.createElement(tag, headingProps, ...renderInlineContent(block.content, collectionItemData, pageCollectionItemData, textStyles, isEditMode, linkContext, timezone, layerDataMap, components, renderComponentBlock, ancestorComponentIds));
+    return React.createElement(tag, headingProps, ...renderInlineContent(block.content, collectionItemData, pageCollectionItemData, textStyles, isEditMode, linkContext, timezone, layerDataMap, components, renderComponentBlock, ancestorComponentIds, useSpanForParagraphs));
   }
 
   if (block.type === 'bulletList') {
@@ -935,7 +938,8 @@ export function renderRichText(
       paragraph.content[0].attrs?.variable?.data?.field_type === 'rich_text';
 
     if (hasSoleRichTextVariable) {
-      const inlineContent = renderInlineContent(paragraph.content, collectionItemData, pageCollectionItemData, textStyles, isEditMode, linkContext, timezone, layerDataMap, components, renderComponentBlock, ancestorComponentIds);
+      const nestedUseSpans = isSimpleTextElement ? true : useSpanForParagraphs;
+      const inlineContent = renderInlineContent(paragraph.content, collectionItemData, pageCollectionItemData, textStyles, isEditMode, linkContext, timezone, layerDataMap, components, renderComponentBlock, ancestorComponentIds, nestedUseSpans);
       return Array.isArray(inlineContent) ? inlineContent : [inlineContent];
     }
 
@@ -946,7 +950,7 @@ export function renderRichText(
       }
       return null;
     }
-    const inlineContent = renderInlineContent(paragraph.content, collectionItemData, pageCollectionItemData, textStyles, isEditMode, linkContext, timezone, layerDataMap, components, renderComponentBlock, ancestorComponentIds);
+    const inlineContent = renderInlineContent(paragraph.content, collectionItemData, pageCollectionItemData, textStyles, isEditMode, linkContext, timezone, layerDataMap, components, renderComponentBlock, ancestorComponentIds, useSpanForParagraphs);
     if (isEditMode && !isSimpleTextElement) {
       const paragraphClass = textStyles?.paragraph?.classes ?? DEFAULT_TEXT_STYLES.paragraph?.classes ?? '';
       const children = Array.isArray(inlineContent) ? inlineContent : [inlineContent];

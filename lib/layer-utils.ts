@@ -631,6 +631,21 @@ function extractInlineMarks(block: any): string[] {
  * When a CMS field is bound, pass the resolved CMS content via `cmsContent`
  * so sublayers reflect the actual CMS item data.
  */
+/**
+ * Check if a richText layer has content blocks (either its own or via CMS binding).
+ * Used for determining collapsibility in the layers tree without requiring resolved CMS data.
+ */
+export function hasRichTextContent(layer: Layer): boolean {
+  if (!isRichTextLayer(layer)) return false;
+  const textVar = layer.variables?.text;
+  if (textVar?.type !== 'dynamic_rich_text') return false;
+  const layerDoc = (textVar.data as any)?.content;
+  if (!layerDoc?.content || !Array.isArray(layerDoc.content)) return false;
+  const binding = getCmsFieldBinding(layerDoc);
+  if (binding) return true;
+  return layerDoc.content.some((block: any) => block.type !== 'paragraph' || block.content?.length);
+}
+
 export function getRichTextSublayers(layer: Layer, cmsContent?: any): RichTextSublayer[] {
   const textVar = layer.variables?.text;
   if (textVar?.type !== 'dynamic_rich_text') return [];
