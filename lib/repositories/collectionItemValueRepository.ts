@@ -108,8 +108,10 @@ export async function getValuesByItemIds(
     return {};
   }
 
-  // Batch into chunks to avoid exceeding PostgREST URL length limits
-  const CHUNK_SIZE = 200;
+  // Batch into chunks to avoid exceeding PostgREST URL length limits.
+  // Keep chunks small enough that total value rows stay under Supabase's
+  // default 1000-row response limit (50 items × ~20 fields = ~1000 rows).
+  const CHUNK_SIZE = 50;
   const valuesByItem: Record<string, Record<string, any>> = {};
 
   for (let i = 0; i < item_ids.length; i += CHUNK_SIZE) {
@@ -120,7 +122,8 @@ export async function getValuesByItemIds(
       .select('item_id, field_id, value, collection_fields!inner(type)')
       .in('item_id', chunk)
       .eq('is_published', is_published)
-      .is('deleted_at', null);
+      .is('deleted_at', null)
+      .limit(5000);
 
     if (error) {
       throw new Error(`Failed to fetch item values: ${error.message}`);
