@@ -176,7 +176,7 @@ function buildPlaceholderOption(id: string, text: string): Layer {
     id,
     name: 'option',
     classes: '',
-    attributes: { value: '', disabled: 'true', selected: 'true', hidden: 'true' },
+    attributes: { value: '', disabled: 'true', hidden: 'true' },
     settings: { isPlaceholder: true },
     variables: {
       text: {

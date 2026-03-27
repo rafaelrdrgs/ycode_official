@@ -1761,6 +1761,16 @@ const LayerItem: React.FC<{
       });
     }
 
+    // Select with placeholder: set defaultValue so React shows the placeholder option
+    if (htmlTag === 'select' && !elementProps.value) {
+      const hasPlaceholder = effectiveLayer.children?.some(
+        (c) => c.name === 'option' && c.settings?.isPlaceholder
+      );
+      if (hasPlaceholder) {
+        elementProps.defaultValue = '';
+      }
+    }
+
     // Add editor event handlers if in edit mode (but not for context menu trigger)
     if (isEditMode && !isEditing) {
       const originalOnClick = elementProps.onClick as ((e: React.MouseEvent) => void) | undefined;

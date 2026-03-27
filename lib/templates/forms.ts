@@ -636,7 +636,7 @@ export const formTemplates: Record<string, BlockTemplate> = {
           children: [
             {
               name: 'option',
-              attributes: { value: '', disabled: 'true', selected: 'true', hidden: 'true' },
+              attributes: { value: '', disabled: 'true', hidden: 'true' },
               settings: { isPlaceholder: true },
               variables: {
                 text: {
