@@ -13,6 +13,8 @@ import { buildCustomFontsCss, buildFontClassesCss, getGoogleFontLinks } from '@/
 import { collectLayerAssetIds, getAssetProxyUrl } from '@/lib/asset-utils';
 import { getAllPages } from '@/lib/repositories/pageRepository';
 import { getAllPageFolders } from '@/lib/repositories/pageFolderRepository';
+import { getMapboxAccessToken, getGoogleMapsEmbedApiKey } from '@/lib/map-server';
+import { getAllColorVariables } from '@/lib/repositories/colorVariableRepository';
 import { getItemWithValues, getItemsWithValues } from '@/lib/repositories/collectionItemRepository';
 import { getFieldsByCollectionId } from '@/lib/repositories/collectionFieldRepository';
 import { REF_PAGE_PREFIX, REF_COLLECTION_PREFIX } from '@/lib/link-utils';
@@ -277,6 +279,23 @@ export default async function PageRenderer({
     console.error('[PageRenderer] Error loading fonts:', error);
   }
 
+  // Fetch server-side settings needed by LayerRenderer (map tokens, color variables)
+  const [mapboxToken, googleMapsEmbedKey, serverColorVariables] = await Promise.all([
+    getMapboxAccessToken(),
+    getGoogleMapsEmbedApiKey(),
+    getAllColorVariables(),
+  ]);
+  const serverSettings: Record<string, unknown> = {};
+  if (mapboxToken) {
+    serverSettings.mapbox_access_token = mapboxToken;
+  }
+  if (googleMapsEmbedKey) {
+    serverSettings.google_maps_embed_api_key = googleMapsEmbedKey;
+  }
+  if (serverColorVariables.length > 0) {
+    serverSettings.color_variables = serverColorVariables;
+  }
+
   // Pre-resolve all asset URLs for SSR (images, videos, audio, icons, and field values)
   const layerAssetIds = collectLayerAssetIds(resolvedLayers, components);
 
@@ -418,6 +437,7 @@ export default async function PageRenderer({
           translations={translations}
           resolvedAssets={resolvedAssets}
           components={components}
+          serverSettings={serverSettings}
         />
 
         {/* Inject password form for 401 error pages */}

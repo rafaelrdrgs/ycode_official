@@ -31,10 +31,26 @@ import { getSettingByKey } from '@/lib/repositories/settingsRepository';
 import { parseMultiAssetFieldValue, buildAssetVirtualValues } from '@/lib/multi-asset-utils';
 import { parseMultiReferenceValue } from '@/lib/collection-utils';
 import { combineBgValues, mergeStaticBgVars } from '@/lib/tailwind-class-mapper';
+import { getMapIframeProps, DEFAULT_MAP_SETTINGS } from '@/lib/map-utils';
+import { getMapboxAccessToken, getGoogleMapsEmbedApiKey } from '@/lib/map-server';
 import { getAssetsByIds } from '@/lib/repositories/assetRepository';
 import { isVirtualAssetField, findDisplayField } from '@/lib/collection-field-utils';
 import type { FieldVariable, AssetVariable, DynamicTextVariable, LinkSettings } from '@/types';
 import type { DesignColorVariable } from '@/types';
+
+// Cached map provider tokens for synchronous use inside layerToHtml.
+// Set by ensureMapTokens() before HTML generation begins.
+let _cachedMapboxToken: string | null = null;
+let _cachedGoogleMapsEmbedKey: string | null = null;
+
+async function ensureMapTokens(): Promise<void> {
+  if (_cachedMapboxToken === null) {
+    _cachedMapboxToken = (await getMapboxAccessToken()) || '';
+  }
+  if (_cachedGoogleMapsEmbedKey === null) {
+    _cachedGoogleMapsEmbedKey = (await getGoogleMapsEmbedApiKey()) || '';
+  }
+}
 
 /**
  * Create the appropriate variable for an asset field value.
@@ -1353,7 +1369,8 @@ function resolveRichTextVariables(
     const isBlockNode = (n: any) =>
       n?.type === 'paragraph' || n?.type === 'heading' ||
       n?.type === 'bulletList' || n?.type === 'orderedList' ||
-      n?.type === 'richTextComponent' || n?.type === 'richTextImage';
+      n?.type === 'richTextComponent' || n?.type === 'richTextImage' ||
+      n?.type === 'horizontalRule';
     const hasBlockChildren = result.content.some(isBlockNode);
     if (hasBlockChildren) {
       const lifted: any[] = [];
@@ -1780,14 +1797,16 @@ export async function resolveCollectionLayers(
               sortedItems = items.sort((a, b) => {
                 const aValue = a.values[sortBy] || '';
                 const bValue = b.values[sortBy] || '';
-                const aNum = parseFloat(String(aValue));
-                const bNum = parseFloat(String(bValue));
+                const aStr = String(aValue);
+                const bStr = String(bValue);
+                const aNum = aStr.trim() !== '' ? Number(aStr) : NaN;
+                const bNum = bStr.trim() !== '' ? Number(bStr) : NaN;
 
                 if (!isNaN(aNum) && !isNaN(bNum)) {
                   return sortOrder === 'desc' ? bNum - aNum : aNum - bNum;
                 }
 
-                const comparison = String(aValue).localeCompare(String(bValue));
+                const comparison = aStr.localeCompare(bStr);
                 return sortOrder === 'desc' ? -comparison : comparison;
               });
             }
@@ -2545,6 +2564,9 @@ export async function renderCollectionItemsToHtml(
   // Get timezone setting for date formatting
   const htmlTimezone = (await getSettingByKey('timezone') as string | null) || 'UTC';
 
+  // Pre-fetch map provider tokens for map layers in HTML export
+  await ensureMapTokens();
+
   // Render each item using the template
   const renderedItems = await Promise.all(
     items.map(async (item, index) => {
@@ -3181,6 +3203,14 @@ function renderTiptapToHtml(
     return imgTag;
   }
 
+  // Handle horizontal rules (separator)
+  if (content.type === 'horizontalRule') {
+    const mergedStyles = { ...DEFAULT_TEXT_STYLES, ...textStyles };
+    const hrClass = mergedStyles?.horizontalRule?.classes || '';
+    const classAttr = hrClass ? ` class="${escapeHtml(hrClass)}"` : '';
+    return `<hr${classAttr} />`;
+  }
+
   // Handle embedded component blocks
   if (content.type === 'richTextComponent' && content.attrs?.componentId) {
     if (renderComponentHtml) {
@@ -3474,6 +3504,32 @@ function layerToHtml(
     }
   }
 
+  // Handle Map layers — provider-aware iframe
+  if (layer.name === 'map') {
+    const mapSettings = {
+      ...DEFAULT_MAP_SETTINGS,
+      ...layer.settings?.map,
+      mapbox: { ...DEFAULT_MAP_SETTINGS.mapbox, ...layer.settings?.map?.mapbox },
+      google: { ...DEFAULT_MAP_SETTINGS.google, ...layer.settings?.map?.google },
+    };
+    const mapToken = mapSettings.provider === 'google'
+      ? _cachedGoogleMapsEmbedKey
+      : _cachedMapboxToken;
+
+    if (mapToken) {
+      const iframeProps = getMapIframeProps(mapSettings, mapToken);
+      const attrsStr = attrs.length > 0 ? ' ' + attrs.join(' ') : '';
+      if (iframeProps.type === 'src') {
+        return `<div${attrsStr}><iframe src="${escapeHtml(iframeProps.src)}" referrerpolicy="no-referrer-when-downgrade" loading="lazy" style="width:100%;height:100%;border:none;display:block" title="Map"></iframe></div>`;
+      }
+      const escapedSrcdoc = escapeHtml(iframeProps.srcDoc);
+      return `<div${attrsStr}><iframe srcdoc="${escapedSrcdoc}" sandbox="allow-scripts allow-same-origin" style="width:100%;height:100%;border:none;display:block" title="Map"></iframe></div>`;
+    }
+
+    const attrsStr = attrs.length > 0 ? ' ' + attrs.join(' ') : '';
+    return `<div${attrsStr}></div>`;
+  }
+
   // Handle video (variables structure)
   if (tag === 'video') {
     const videoSrc = layer.variables?.video?.src;
@@ -3716,6 +3772,10 @@ function layerToHtml(
         }
       }
     }
+  }
+
+  if (layer.name === 'option' && layer.settings?.isPlaceholder) {
+    attrs.push('selected');
   }
 
   // For buttons rendered as <a>, resolve link href and add attributes directly

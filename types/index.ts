@@ -226,6 +226,31 @@ export interface LayerSettings {
   sortByCollectionId?: string; // Collection to source sort-by field options from
   sortByFieldIds?: string[]; // Which field IDs are enabled as sort-by options
   placeholder?: string; // Placeholder text for select elements (rendered as first disabled option)
+  isPlaceholder?: boolean; // Marks an <option> child as a placeholder (disabled, hidden, selected)
+  map?: MapSettings; // Map-specific settings (only for map layers)
+}
+
+export type MapProvider = 'mapbox' | 'google';
+export type MapStyle = 'streets' | 'satellite' | 'light' | 'dark' | 'outdoors';
+export type GoogleMapStyle = 'roadmap' | 'satellite';
+
+export interface MapProviderSettings {
+  style: string;
+  interactive: boolean;
+  scrollZoom: boolean;
+  showNavControl: boolean;
+  showScaleBar: boolean;
+}
+
+export interface MapSettings {
+  provider: MapProvider;
+  latitude: number;
+  longitude: number;
+  zoom: number;
+  markerColor: string | null;
+  search?: string;
+  mapbox: MapProviderSettings;
+  google: MapProviderSettings;
 }
 
 // Layer Style Types
