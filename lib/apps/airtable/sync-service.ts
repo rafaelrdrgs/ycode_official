@@ -28,9 +28,9 @@ import {
   getValueMapByFieldIds,
 } from '@/lib/repositories/collectionItemValueRepository';
 
-import { listAllRecords, getWebhookPayloads, deleteWebhook, refreshWebhook } from './index';
+import { listAllRecords, listRecordsByIds, getWebhookPayloads, deleteWebhook, refreshWebhook } from './index';
 import { transformFieldValue } from './field-mapping';
-import type { AirtableConnection, AirtableRecord, SyncResult } from './types';
+import type { AirtableConnection, AirtableRecord, AirtableWebhookPayload, SyncResult, TableChanges } from './types';
 import type { CollectionFieldType, CollectionField } from '@/types';
 
 export const APP_ID = 'airtable';
@@ -38,6 +38,7 @@ const HIDDEN_FIELD_KEY = 'airtable_id';
 const SLUG_FIELD_KEY = 'slug';
 const BULK_CHUNK_SIZE = 500;
 const ATTACHMENT_CONCURRENCY = 5;
+const INCREMENTAL_SYNC_THRESHOLD = 100;
 
 // =============================================================================
 // Connection Helpers
@@ -188,28 +189,22 @@ export async function ensureRecordIdField(collectionId: string): Promise<string>
 }
 
 // =============================================================================
-// Full Sync
+// Sync Status Wrapper
 // =============================================================================
 
-/**
- * Run a full sync for a connection.
- * Fetches all Airtable records and reconciles with CMS items.
- */
-export async function fullSync(connection: AirtableConnection): Promise<SyncResult> {
-  const token = await requireAirtableToken();
-
+/** Wrap a sync operation with status tracking on the connection */
+async function withSyncStatus(
+  connection: AirtableConnection,
+  syncFn: () => Promise<SyncResult>
+): Promise<SyncResult> {
   await updateConnection(connection.id, { syncStatus: 'syncing', syncError: null });
-
   try {
-    const airtableRecords = await listAllRecords(token, connection.baseId, connection.tableId);
-    const result = await reconcileRecords(connection, airtableRecords);
-
+    const result = await syncFn();
     await updateConnection(connection.id, {
       syncStatus: 'idle',
       syncError: null,
       lastSyncedAt: result.syncedAt,
     });
-
     return result;
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown sync error';
@@ -219,12 +214,83 @@ export async function fullSync(connection: AirtableConnection): Promise<SyncResu
 }
 
 // =============================================================================
-// Webhook-triggered Sync
+// Full Sync
 // =============================================================================
 
 /**
+ * Run a full sync for a connection.
+ * Fetches all Airtable records and reconciles with CMS items.
+ */
+export async function fullSync(connection: AirtableConnection): Promise<SyncResult> {
+  return withSyncStatus(connection, async () => {
+    const token = await requireAirtableToken();
+    const airtableRecords = await listAllRecords(token, connection.baseId, connection.tableId);
+    return reconcileRecords(connection, airtableRecords);
+  });
+}
+
+// =============================================================================
+// Webhook-triggered Sync
+// =============================================================================
+
+/** Aggregate record-level changes from webhook payloads for a specific table */
+function extractTableChanges(
+  payloads: AirtableWebhookPayload['payloads'],
+  tableId: string
+): TableChanges {
+  const created = new Set<string>();
+  const changed = new Set<string>();
+  const destroyed = new Set<string>();
+
+  for (const payload of payloads) {
+    const table = payload.changedTablesById?.[tableId];
+    if (!table) continue;
+
+    if (table.createdRecordsById) {
+      for (const id of Object.keys(table.createdRecordsById)) created.add(id);
+    }
+    if (table.changedRecordsById) {
+      for (const id of Object.keys(table.changedRecordsById)) changed.add(id);
+    }
+    if (table.destroyedRecordIds) {
+      for (const id of table.destroyedRecordIds) destroyed.add(id);
+    }
+  }
+
+  return {
+    createdRecordIds: Array.from(created),
+    changedRecordIds: Array.from(changed),
+    destroyedRecordIds: Array.from(destroyed),
+  };
+}
+
+/**
+ * Run an incremental sync for a connection using webhook change data.
+ * Fetches only the created/changed records and deletes destroyed ones.
+ */
+async function incrementalSync(
+  connection: AirtableConnection,
+  changes: TableChanges
+): Promise<SyncResult> {
+  return withSyncStatus(connection, async () => {
+    const token = await requireAirtableToken();
+
+    // Don't fetch records that were destroyed — they no longer exist on Airtable
+    const destroyedSet = new Set(changes.destroyedRecordIds);
+    const uniqueIds = [...new Set([
+      ...changes.createdRecordIds,
+      ...changes.changedRecordIds,
+    ].filter((id) => !destroyedSet.has(id)))];
+
+    const records = await listRecordsByIds(token, connection.baseId, connection.tableId, uniqueIds);
+    return incrementalReconcile(connection, records, changes.destroyedRecordIds);
+  });
+}
+
+/**
  * Process an Airtable webhook notification.
- * Fetches payloads to determine changed tables, then re-syncs affected connections.
+ * Extracts per-record changes and runs incremental sync when practical,
+ * falling back to full sync for large changesets.
  */
 export async function processWebhookNotification(
   baseId: string,
@@ -239,13 +305,10 @@ export async function processWebhookNotification(
 
   if (affectedConnections.length === 0) return [];
 
-  // Use the first matching connection's cursor (all share same webhook)
   const cursor = affectedConnections[0].webhookCursor || undefined;
-
   const payloadResponse = await getWebhookPayloads(token, baseId, webhookId, cursor);
 
   if (!payloadResponse.payloads?.length) {
-    // Advance cursor even when no payloads
     if (payloadResponse.cursor) {
       for (const conn of affectedConnections) {
         await updateConnection(conn.id, { webhookCursor: payloadResponse.cursor });
@@ -254,24 +317,20 @@ export async function processWebhookNotification(
     return [];
   }
 
-  // Collect table IDs that have data changes
-  const changedTableIds = new Set<string>();
-  for (const payload of payloadResponse.payloads) {
-    if (payload.changedTablesById) {
-      for (const tableId of Object.keys(payload.changedTablesById)) {
-        changedTableIds.add(tableId);
-      }
-    }
-  }
-
-  // Re-sync connections whose table was affected
   const results: SyncResult[] = [];
   for (const conn of affectedConnections) {
-    if (changedTableIds.has(conn.tableId)) {
-      const result = await fullSync(conn);
+    const changes = extractTableChanges(payloadResponse.payloads, conn.tableId);
+    const totalChanges = changes.createdRecordIds.length
+      + changes.changedRecordIds.length
+      + changes.destroyedRecordIds.length;
+
+    if (totalChanges > 0) {
+      const result = totalChanges > INCREMENTAL_SYNC_THRESHOLD
+        ? await fullSync(conn)
+        : await incrementalSync(conn, changes);
       results.push(result);
     }
-    // Always advance cursor
+
     await updateConnection(conn.id, { webhookCursor: payloadResponse.cursor });
   }
 
@@ -307,6 +366,17 @@ interface SyncContext {
 interface AttachmentFieldInfo {
   isMultiple: boolean;
   allowedMimeTypes: string[] | null;
+}
+
+/** All pre-computed state needed by both full and incremental reconciliation */
+interface SyncState {
+  ctx: SyncContext;
+  existingItems: Array<{ id: string }>;
+  existingValues: Record<string, Record<string, unknown>>;
+  recordIdToCmsItem: Map<string, string>;
+  connectionId: string;
+  collectionId: string;
+  result: SyncResult;
 }
 
 interface SlugContext {
@@ -578,24 +648,20 @@ function hasChanges(
   return false;
 }
 
-/**
- * Reconcile Airtable records against existing CMS items.
- * Uses batch operations and dirty checking for efficiency.
- */
-async function reconcileRecords(
-  connection: AirtableConnection,
-  airtableRecords: AirtableRecord[]
-): Promise<SyncResult> {
+// =============================================================================
+// Shared Sync State & Operations
+// =============================================================================
+
+/** Load fields, items, values, and build the sync context for a connection */
+async function prepareSyncState(connection: AirtableConnection): Promise<SyncState> {
   const { collectionId, recordIdFieldId } = connection;
   const result: SyncResult = { created: 0, updated: 0, deleted: 0, errors: [], syncedAt: new Date().toISOString() };
 
-  // Load fields concurrently with items (independent queries)
   const [{ items: existingItems }, fields] = await Promise.all([
     getItemsByCollectionId(collectionId),
     getFieldsByCollectionId(collectionId),
   ]);
 
-  // Filter out mappings targeting deleted fields
   const activeFieldIds = new Set(fields.map((f) => f.id));
   const fieldMapping = connection.fieldMapping.filter((m) => activeFieldIds.has(m.cmsFieldId));
 
@@ -604,7 +670,6 @@ async function reconcileRecords(
     ? await getValuesByItemIds(existingItemIds)
     : {};
 
-  // Pre-compute which mappings target attachment fields (checked once, not per-record)
   const multiAssetFieldIdSet = new Set(
     fields.filter((f) => isMultipleAssetField(f)).map((f) => f.id)
   );
@@ -619,7 +684,6 @@ async function reconcileRecords(
     }
   }
 
-  // Build slug context if slug field is mapped
   const slugField = fields.find((f) => f.key === SLUG_FIELD_KEY);
   const slugIsMapped = slugField
     ? fieldMapping.some((m) => m.cmsFieldId === slugField.id)
@@ -635,7 +699,6 @@ async function reconcileRecords(
     slugCtx = { slugFieldId: slugField.id, existingSlugs };
   }
 
-  // Resolve system auto-fields (id, created_at, updated_at)
   const idField = fields.find((f) => f.key === 'id');
   const createdAtField = fields.find((f) => f.key === 'created_at');
   const updatedAtField = fields.find((f) => f.key === 'updated_at');
@@ -646,15 +709,12 @@ async function reconcileRecords(
     updatedAtFieldId: updatedAtField?.id ?? null,
   };
 
-  // Load previous attachment fingerprints from connection metadata
   const prevFingerprints = new Map<string, string>(
     Object.entries(connection.attachmentFingerprints ?? {})
   );
 
-  // Build reference resolvers for linked record fields
   const referenceResolvers = await buildReferenceResolvers(fieldMapping, fields);
 
-  // Build shared sync context — passed to every buildRecordValues call
   const ctx: SyncContext = {
     fieldMapping,
     recordIdFieldId,
@@ -666,7 +726,6 @@ async function reconcileRecords(
     referenceResolvers,
   };
 
-  // Index: airtableRecordId -> cmsItemId
   const recordIdToCmsItem = new Map<string, string>();
   for (const item of existingItems) {
     const vals = existingValues[item.id];
@@ -675,19 +734,30 @@ async function reconcileRecords(
     }
   }
 
-  // Classify records
+  return { ctx, existingItems, existingValues, recordIdToCmsItem, connectionId: connection.id, collectionId, result };
+}
+
+/** Classify Airtable records into creates and updates based on existing CMS data */
+async function classifyRecords(
+  records: AirtableRecord[],
+  state: SyncState
+): Promise<{
+  toCreate: AirtableRecord[];
+  toUpdate: Array<{ cmsItemId: string; values: Record<string, string | null> }>;
+  seenCmsItemIds: Set<string>;
+}> {
   const seenCmsItemIds = new Set<string>();
   const toCreate: AirtableRecord[] = [];
   const toUpdate: Array<{ cmsItemId: string; values: Record<string, string | null> }> = [];
 
-  for (const record of airtableRecords) {
-    const cmsItemId = recordIdToCmsItem.get(record.id);
+  for (const record of records) {
+    const cmsItemId = state.recordIdToCmsItem.get(record.id);
     if (cmsItemId) {
       seenCmsItemIds.add(cmsItemId);
-      const newValues = await buildRecordValues(record, ctx, existingValues[cmsItemId]);
-      if (hasChanges(newValues, existingValues[cmsItemId])) {
-        if (autoFields.updatedAtFieldId) {
-          newValues[autoFields.updatedAtFieldId] = new Date().toISOString();
+      const newValues = await buildRecordValues(record, state.ctx, state.existingValues[cmsItemId] as Record<string, string>);
+      if (hasChanges(newValues, state.existingValues[cmsItemId])) {
+        if (state.ctx.autoFields.updatedAtFieldId) {
+          newValues[state.ctx.autoFields.updatedAtFieldId] = new Date().toISOString();
         }
         toUpdate.push({ cmsItemId, values: newValues });
       }
@@ -696,15 +766,18 @@ async function reconcileRecords(
     }
   }
 
-  // Collect item IDs to soft-delete
-  const toDeleteIds: string[] = [];
-  for (const item of existingItems) {
-    if (existingValues[item.id]?.[recordIdFieldId] && !seenCmsItemIds.has(item.id)) {
-      toDeleteIds.push(item.id);
-    }
-  }
+  return { toCreate, toUpdate, seenCmsItemIds };
+}
 
-  // --- BATCH CREATE ---
+/** Execute batch create, update, and delete operations. Mutates state.result. */
+async function executeBatchOperations(
+  state: SyncState,
+  toCreate: AirtableRecord[],
+  toUpdate: Array<{ cmsItemId: string; values: Record<string, string | null> }>,
+  toDeleteIds: string[]
+): Promise<void> {
+  const { ctx, existingItems, existingValues, collectionId, result } = state;
+
   if (toCreate.length > 0) {
     try {
       const newItemIds = toCreate.map(() => randomUUID());
@@ -716,34 +789,31 @@ async function reconcileRecords(
         is_publishable: true,
       }));
 
-      // Compute starting auto-increment ID from existing items
       let nextAutoId = 1;
-      if (autoFields.idFieldId) {
+      if (ctx.autoFields.idFieldId) {
         for (const item of existingItems) {
-          const val = existingValues[item.id]?.[autoFields.idFieldId];
+          const val = existingValues[item.id]?.[ctx.autoFields.idFieldId];
           if (val) {
-            const num = parseInt(val, 10);
+            const num = parseInt(String(val), 10);
             if (!isNaN(num) && num >= nextAutoId) nextAutoId = num + 1;
           }
         }
       }
 
-      // Build values concurrently with DB insert — IDs are pre-allocated
       const buildValues = async () => {
         const now = new Date().toISOString();
         const valuesToInsert: Array<{ item_id: string; field_id: string; value: string | null }> = [];
         for (let i = 0; i < toCreate.length; i++) {
           const vals = await buildRecordValues(toCreate[i], ctx);
 
-          // Populate system auto-fields
-          if (autoFields.idFieldId) {
-            vals[autoFields.idFieldId] = String(nextAutoId++);
+          if (ctx.autoFields.idFieldId) {
+            vals[ctx.autoFields.idFieldId] = String(nextAutoId++);
           }
-          if (autoFields.createdAtFieldId) {
-            vals[autoFields.createdAtFieldId] = now;
+          if (ctx.autoFields.createdAtFieldId) {
+            vals[ctx.autoFields.createdAtFieldId] = now;
           }
-          if (autoFields.updatedAtFieldId) {
-            vals[autoFields.updatedAtFieldId] = now;
+          if (ctx.autoFields.updatedAtFieldId) {
+            vals[ctx.autoFields.updatedAtFieldId] = now;
           }
 
           for (const [fieldId, value] of Object.entries(vals)) {
@@ -768,7 +838,6 @@ async function reconcileRecords(
     }
   }
 
-  // --- BATCH UPDATE (only dirty records) ---
   if (toUpdate.length > 0) {
     try {
       await batchUpsertValues(toUpdate);
@@ -778,7 +847,6 @@ async function reconcileRecords(
     }
   }
 
-  // --- BATCH DELETE ---
   if (toDeleteIds.length > 0) {
     try {
       await batchSoftDelete(toDeleteIds);
@@ -788,14 +856,50 @@ async function reconcileRecords(
     }
   }
 
-  // Persist attachment fingerprints for next sync to skip unchanged downloads
   if (ctx.attachmentFingerprintCache.size > 0) {
-    await updateConnection(connection.id, {
+    await updateConnection(state.connectionId, {
       attachmentFingerprints: Object.fromEntries(ctx.attachmentFingerprintCache),
     });
   }
+}
 
-  return result;
+// =============================================================================
+// Reconciliation
+// =============================================================================
+
+/** Full reconciliation — compares all Airtable records against all CMS items */
+async function reconcileRecords(
+  connection: AirtableConnection,
+  airtableRecords: AirtableRecord[]
+): Promise<SyncResult> {
+  const state = await prepareSyncState(connection);
+  const { toCreate, toUpdate, seenCmsItemIds } = await classifyRecords(airtableRecords, state);
+
+  // Full sync: items with an airtable_id not present in the fetched data are deleted
+  const toDeleteIds = state.existingItems
+    .filter((item) => state.existingValues[item.id]?.[connection.recordIdFieldId] && !seenCmsItemIds.has(item.id))
+    .map((item) => item.id);
+
+  await executeBatchOperations(state, toCreate, toUpdate, toDeleteIds);
+  return state.result;
+}
+
+/** Incremental reconciliation — only processes specific records + explicit deletes */
+async function incrementalReconcile(
+  connection: AirtableConnection,
+  records: AirtableRecord[],
+  destroyedRecordIds: string[]
+): Promise<SyncResult> {
+  const state = await prepareSyncState(connection);
+  const { toCreate, toUpdate } = await classifyRecords(records, state);
+
+  // Incremental: deletes come directly from the webhook payload
+  const toDeleteIds = destroyedRecordIds
+    .map((id) => state.recordIdToCmsItem.get(id))
+    .filter((id): id is string => !!id);
+
+  await executeBatchOperations(state, toCreate, toUpdate, toDeleteIds);
+  return state.result;
 }
 
 // =============================================================================

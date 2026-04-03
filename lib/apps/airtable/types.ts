@@ -161,6 +161,17 @@ export interface AirtableConnection {
 export type AirtableSyncStatus = 'idle' | 'syncing' | 'error';
 
 // =============================================================================
+// Webhook Change Tracking
+// =============================================================================
+
+/** Aggregated record-level changes extracted from webhook payloads for a single table */
+export interface TableChanges {
+  createdRecordIds: string[];
+  changedRecordIds: string[];
+  destroyedRecordIds: string[];
+}
+
+// =============================================================================
 // Sync Results
 // =============================================================================
 

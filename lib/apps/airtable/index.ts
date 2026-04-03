@@ -158,6 +158,42 @@ export async function listAllRecords(
   return allRecords;
 }
 
+/** Fetch specific records by IDs using filterByFormula */
+export async function listRecordsByIds(
+  token: string,
+  baseId: string,
+  tableId: string,
+  recordIds: string[]
+): Promise<AirtableRecord[]> {
+  if (recordIds.length === 0) return [];
+
+  const formula = recordIds.length === 1
+    ? `RECORD_ID()='${recordIds[0]}'`
+    : `OR(${recordIds.map((id) => `RECORD_ID()='${id}'`).join(',')})`;
+
+  const allRecords: AirtableRecord[] = [];
+  let offset: string | undefined;
+
+  do {
+    const params = new URLSearchParams({
+      returnFieldsByFieldId: 'true',
+      filterByFormula: formula,
+    });
+    if (offset) params.set('offset', offset);
+
+    const response = await airtableRequest<AirtablePaginatedResponse<AirtableRecord>>(
+      token,
+      `${AIRTABLE_API_URL}/${baseId}/${tableId}?${params}`,
+      { baseId }
+    );
+
+    allRecords.push(...(response.records ?? []));
+    offset = response.offset;
+  } while (offset);
+
+  return allRecords;
+}
+
 // =============================================================================
 // Webhooks
 // =============================================================================
