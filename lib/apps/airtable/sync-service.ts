@@ -39,6 +39,53 @@ const SLUG_FIELD_KEY = 'slug';
 const BULK_CHUNK_SIZE = 500;
 const ATTACHMENT_CONCURRENCY = 5;
 const INCREMENTAL_SYNC_THRESHOLD = 100;
+const SYNC_LOCK_TTL_MS = 5 * 60 * 1000;
+
+// =============================================================================
+// Sync Lock (atomic via unique constraint on app_settings)
+// =============================================================================
+
+/**
+ * Atomically claim a per-connection sync lock using INSERT ON CONFLICT.
+ * Two concurrent calls for the same connection: one inserts and gets true,
+ * the other hits the unique constraint and gets false. Stale locks (>5 min)
+ * are cleared first to prevent deadlocks from crashed invocations.
+ */
+async function claimSyncLock(connectionId: string): Promise<boolean> {
+  const client = await getSupabaseAdmin();
+  if (!client) return false;
+
+  const lockKey = `sync_lock:${connectionId}`;
+
+  await client
+    .from('app_settings')
+    .delete()
+    .eq('app_id', APP_ID)
+    .eq('key', lockKey)
+    .lt('updated_at', new Date(Date.now() - SYNC_LOCK_TTL_MS).toISOString());
+
+  const { error } = await client
+    .from('app_settings')
+    .insert({
+      app_id: APP_ID,
+      key: lockKey,
+      value: { lockedAt: new Date().toISOString() },
+      updated_at: new Date().toISOString(),
+    });
+
+  return !error;
+}
+
+async function releaseSyncLock(connectionId: string): Promise<void> {
+  const client = await getSupabaseAdmin();
+  if (!client) return;
+
+  await client
+    .from('app_settings')
+    .delete()
+    .eq('app_id', APP_ID)
+    .eq('key', `sync_lock:${connectionId}`);
+}
 
 // =============================================================================
 // Connection Helpers
@@ -292,9 +339,8 @@ async function incrementalSync(
  * Extracts per-record changes and runs incremental sync when practical,
  * falling back to full sync for large changesets.
  *
- * Concurrency guard: claims `syncStatus: 'syncing'` before fetching
- * payloads and advances the cursor before processing, so concurrent
- * serverless invocations skip or see an empty payload.
+ * Concurrency guard: uses an atomic database lock (INSERT ON CONFLICT)
+ * so only one serverless invocation processes a connection at a time.
  */
 export async function processWebhookNotification(
   baseId: string,
@@ -311,12 +357,12 @@ export async function processWebhookNotification(
 
   const results: SyncResult[] = [];
   for (const conn of affectedConnections) {
-    const freshConn = await getConnectionById(conn.id);
-    if (!freshConn || freshConn.syncStatus === 'syncing') continue;
-
-    await updateConnection(conn.id, { syncStatus: 'syncing', syncError: null });
+    if (!await claimSyncLock(conn.id)) continue;
 
     try {
+      const freshConn = await getConnectionById(conn.id);
+      if (!freshConn) continue;
+
       const cursor = freshConn.webhookCursor || undefined;
       const payloadResponse = await getWebhookPayloads(token, baseId, webhookId, cursor);
 
@@ -324,10 +370,7 @@ export async function processWebhookNotification(
         await updateConnection(conn.id, { webhookCursor: payloadResponse.cursor });
       }
 
-      if (!payloadResponse.payloads?.length) {
-        await updateConnection(conn.id, { syncStatus: 'idle' });
-        continue;
-      }
+      if (!payloadResponse.payloads?.length) continue;
 
       const changes = extractTableChanges(payloadResponse.payloads, conn.tableId);
       const totalChanges = changes.createdRecordIds.length
@@ -339,12 +382,9 @@ export async function processWebhookNotification(
           ? await fullSync(freshConn)
           : await incrementalSync(freshConn, changes);
         results.push(result);
-      } else {
-        await updateConnection(conn.id, { syncStatus: 'idle' });
       }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown sync error';
-      await updateConnection(conn.id, { syncStatus: 'error', syncError: message });
+    } finally {
+      await releaseSyncLock(conn.id);
     }
   }
 
