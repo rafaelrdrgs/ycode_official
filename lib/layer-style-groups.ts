@@ -56,8 +56,6 @@ const TEXT_STYLE_KEY_TO_GROUP: Record<string, string> = {
   link: 'button',
 
   table: 'table',
-  tableHead: 'table',
-  tableBody: 'table',
   tableHeader: 'table',
   tableCell: 'table',
   tableRow: 'table',

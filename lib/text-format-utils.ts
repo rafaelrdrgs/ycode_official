@@ -197,40 +197,28 @@ export const DEFAULT_TEXT_STYLES: Record<string, TextStyle> = {
   // Table elements
   table: {
     label: 'Table',
-    classes: 'w-full border-separate border-spacing-0 mt-[20px] mb-[20px] border-solid border-[1px] border-[#000000]/10 rounded-[10px] divide-y-[1px]',
+    classes: 'w-full border-separate border-spacing-0 mt-[20px] mb-[20px] border-solid border-[1px] border-[#000000]/10 rounded-[10px] overflow-hidden',
     design: {
       sizing: { width: '100%' },
       spacing: { marginTop: '20', marginBottom: '20', isActive: true },
-      borders: { divideY: '1', isActive: true, borderColor: '#000000/10', borderStyle: 'solid', borderWidth: '1', divideStyle: 'solid', borderRadius: '10' },
-    },
-  },
-  tableHead: {
-    label: 'Table Head',
-    classes: '',
-    design: {},
-  },
-  tableBody: {
-    label: 'Table Body',
-    classes: 'divide-[#000000] divide-y-[1px]',
-    design: {
-      borders: { divideY: '1', isActive: true, divideStyle: 'solid', divideColor: '#000000' },
+      borders: { isActive: true, borderColor: '#000000/10', borderStyle: 'solid', borderWidth: '1', borderRadius: '10' },
     },
   },
   tableHeader: {
     label: 'Table Header Cell',
-    classes: 'text-left font-[500] pb-[12px] pt-[12px] pr-[12px] pl-[12px]',
+    classes: 'text-left font-[500] pt-[12px] pr-[12px] pb-[12px] pl-[12px] bg-[#000000]/5',
     design: {
       borders: { isActive: true, borderWidthMode: 'all' },
       spacing: { paddingLeft: '12', paddingRight: '12', paddingTop: '12', paddingBottom: '12', isActive: true },
       typography: { textAlign: 'left', fontWeight: '500', isActive: true },
-      backgrounds: { isActive: true },
+      backgrounds: { isActive: true, backgroundColor: '#000000/5' },
     },
   },
   tableCell: {
     label: 'Table Cell',
-    classes: 'px-[8px] pt-[12px] pr-[12px] pb-[12px] pl-[12px] border-solid border-t-[1px] border-[#000000]/10',
+    classes: 'pt-[12px] pr-[12px] pb-[12px] pl-[12px]',
     design: {
-      borders: { isActive: true, borderWidthMode: 'individual', borderRadiusMode: 'individual', borderStyle: 'solid', borderColor: '#000000/10', borderTopWidth: '1' },
+      borders: { isActive: true, borderWidthMode: 'individual', borderRadiusMode: 'individual' },
       spacing: { paddingLeft: '12', paddingRight: '12', paddingTop: '12', paddingBottom: '12', isActive: true },
       typography: { textAlign: 'left', verticalAlign: 'top', isActive: true },
       backgrounds: { isActive: true },
@@ -907,49 +895,20 @@ function renderBlock(
     return renderRichTextComponentBlock(block, key, components, renderComponentBlock, ancestorComponentIds);
   }
 
-  // Handle table blocks — split rows into thead (rows with tableHeader cells) and tbody
   if (block.type === 'table') {
-    const rows = block.content || [];
-    const headerRows: any[] = [];
-    const bodyRows: any[] = [];
+    const rows = (block.content || []).map((row: any, rowIdx: number) =>
+      renderTableNode(row, `${key}-row-${rowIdx}`, collectionItemData, pageCollectionItemData, textStyles, isEditMode, linkContext, timezone, layerDataMap, components, renderComponentBlock, ancestorComponentIds, rowIdx)
+    );
 
-    for (const row of rows) {
-      const isHeaderRow = row.type === 'tableRow' &&
-        row.content?.some((cell: any) => cell.type === 'tableHeader');
-      if (isHeaderRow) {
-        headerRows.push(row);
-      } else {
-        bodyRows.push(row);
-      }
-    }
-
-    const renderRows = (rowList: any[], prefix: string) =>
-      rowList.map((row: any, rowIdx: number) =>
-        renderTableNode(row, `${key}-${prefix}-${rowIdx}`, collectionItemData, pageCollectionItemData, textStyles, isEditMode, linkContext, timezone, layerDataMap, components, renderComponentBlock, ancestorComponentIds, rowIdx)
-      );
-
-    const sections: React.ReactNode[] = [];
-    if (headerRows.length > 0) {
-      const theadClass = getTextStyleClasses(textStyles, 'tableHead');
-      const theadProps: Record<string, any> = { key: `${key}-thead` };
-      if (theadClass) theadProps.className = theadClass;
-      if (isEditMode) theadProps['data-style'] = 'tableHead';
-      sections.push(React.createElement('thead', theadProps, renderRows(headerRows, 'thead')));
-    }
-    if (bodyRows.length > 0) {
-      const tbodyClass = getTextStyleClasses(textStyles, 'tableBody');
-      const tbodyProps: Record<string, any> = { key: `${key}-tbody` };
-      if (tbodyClass) tbodyProps.className = tbodyClass;
-      if (isEditMode) tbodyProps['data-style'] = 'tableBody';
-      sections.push(React.createElement('tbody', tbodyProps, renderRows(bodyRows, 'tbody')));
-    }
-
+    const tbodyProps: Record<string, any> = { key: `${key}-tbody` };
     const tableClass = getTextStyleClasses(textStyles, 'table');
     const tableProps: Record<string, any> = { key };
     if (tableClass) tableProps.className = tableClass;
     if (isEditMode) tableProps['data-style'] = 'table';
 
-    return React.createElement('table', tableProps, sections);
+    return React.createElement('table', tableProps,
+      React.createElement('tbody', tbodyProps, rows)
+    );
   }
 
   return null;
@@ -972,12 +931,15 @@ function renderTableNode(
   renderComponentBlock?: RenderComponentBlockFn,
   ancestorComponentIds?: Set<string>,
   nodeIdx = 0,
+  parentRowIdx = 0,
 ): React.ReactNode {
   if (!node) return null;
 
+  const rowIdx = node.type === 'tableRow' ? nodeIdx : parentRowIdx;
+
   const children = (node.content || []).map((child: any, idx: number) => {
     if (child.type === 'tableRow' || child.type === 'tableCell' || child.type === 'tableHeader') {
-      return renderTableNode(child, `${key}-${idx}`, collectionItemData, pageCollectionItemData, textStyles, isEditMode, linkContext, timezone, layerDataMap, components, renderComponentBlock, ancestorComponentIds, idx);
+      return renderTableNode(child, `${key}-${idx}`, collectionItemData, pageCollectionItemData, textStyles, isEditMode, linkContext, timezone, layerDataMap, components, renderComponentBlock, ancestorComponentIds, idx, rowIdx);
     }
     return renderBlock(child, idx, collectionItemData, pageCollectionItemData, textStyles, false, isEditMode, linkContext, timezone, layerDataMap, components, renderComponentBlock, ancestorComponentIds);
   });
@@ -995,7 +957,12 @@ function renderTableNode(
     tableHeader: 'tableHeader',
   };
   const styleKey = styleKeyMap[node.type];
-  const className = styleKey ? getTextStyleClasses(textStyles, styleKey) : '';
+  let className = styleKey ? getTextStyleClasses(textStyles, styleKey) : '';
+
+  if ((node.type === 'tableCell' || node.type === 'tableHeader') && parentRowIdx > 0) {
+    const borderClasses = 'border-t-[1px] border-solid border-[#000000]/10';
+    className = className ? `${className} ${borderClasses}` : borderClasses;
+  }
 
   const props: Record<string, any> = { key };
   if (className) props.className = className;

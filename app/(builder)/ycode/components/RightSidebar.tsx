@@ -480,7 +480,7 @@ const RightSidebar = React.memo(function RightSidebar({
         // Border controls: hide for pure text elements (show for buttons and containers)
         // Show in text edit mode for block elements that need border styling (Separator, Image)
         if (showTextStyleControls) {
-          const borderStyleKeys = ['horizontalRule', 'richTextImage', 'table', 'tableHead', 'tableBody', 'tableHeader', 'tableCell', 'tableRow'];
+          const borderStyleKeys = ['horizontalRule', 'richTextImage', 'table', 'tableHeader', 'tableCell', 'tableRow'];
           return !!activeTextStyleKey && borderStyleKeys.includes(activeTextStyleKey);
         }
         return !isTextLayer(layer) || isButtonLayer(layer);

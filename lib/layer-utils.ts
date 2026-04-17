@@ -809,8 +809,6 @@ const STYLE_SUBLAYER_ICON_MAP: Record<string, string> = {
   richTextImage: 'image',
   horizontalRule: 'separator',
   table: 'table',
-  tableHead: 'table',
-  tableBody: 'table',
   tableHeader: 'table-cell',
   tableCell: 'table-cell',
   tableRow: 'table-row',

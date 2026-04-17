@@ -265,12 +265,17 @@
 }
 
 .rich-text-editor-full.ProseMirror table {
-  @apply w-full border-separate border-spacing-0 my-2;
+  @apply w-full border-separate border-spacing-0 my-2 border border-border rounded-lg overflow-hidden;
 }
 
 .rich-text-editor-full.ProseMirror th,
 .rich-text-editor-full.ProseMirror td {
-  @apply border border-border px-2 py-1.5 text-left align-top min-w-[80px];
+  @apply px-2 py-1.5 text-left align-top min-w-[80px];
+}
+
+.rich-text-editor-full.ProseMirror tr + tr td,
+.rich-text-editor-full.ProseMirror tr + tr th {
+  @apply border-t border-border;
 }
 
 .rich-text-editor-full.ProseMirror th {
