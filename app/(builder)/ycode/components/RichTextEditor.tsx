@@ -55,6 +55,13 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from '@/components/ui/context-menu';
 import { CollectionFieldSelector, type FieldSourceType } from './CollectionFieldSelector';
 import { flattenFieldGroups, filterFieldGroupsByType, RICH_TEXT_ONLY_FIELD_TYPES, type FieldGroup } from '@/lib/collection-field-utils';
 import { buildFieldVariableData } from '@/lib/variable-format-utils';
@@ -62,6 +69,7 @@ import { createDynamicVariableNodeView } from '@/lib/dynamic-variable-view';
 import { RichTextComponent } from '@/lib/tiptap-extensions/rich-text-component';
 import { RichTextLink, getLinkSettingsFromMark } from '@/lib/tiptap-extensions/rich-text-link';
 import { RichTextImage } from '@/lib/tiptap-extensions/rich-text-image';
+import { RichTextTable, RichTextTableRow, RichTextTableCell, RichTextTableHeader } from '@/lib/tiptap-extensions/rich-text-table';
 import { RichTextHtmlEmbed } from '@/lib/tiptap-extensions/rich-text-html-embed';
 import RichTextLinkPopover from './RichTextLinkPopover';
 import RichTextImagePopover from './RichTextImagePopover';
@@ -412,6 +420,7 @@ const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorProps>(({
 }, ref) => {
   const isFullVariant = variant === 'full';
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [tableContextMenuOpen, setTableContextMenuOpen] = useState(false);
   const [linkPopoverOpen, setLinkPopoverOpen] = useState(false);
   const [imagePopoverOpen, setImagePopoverOpen] = useState(false);
   const [componentPickerOpen, setComponentPickerOpen] = useState(false);
@@ -468,6 +477,10 @@ const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorProps>(({
         RichTextImageWithNodeView,
         RichTextHtmlEmbedWithNodeView,
         HorizontalRule,
+        RichTextTable.configure({ resizable: false }),
+        RichTextTableRow,
+        RichTextTableCell,
+        RichTextTableHeader,
       ];
 
       // Always include heading extension so content with headings is preserved
@@ -1152,6 +1165,20 @@ const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorProps>(({
               </button>
             </ToggleGroupItem>
             <ToggleGroupItem
+              value="table"
+              asChild
+            >
+              <button
+                type="button"
+                title="Insert Table"
+                disabled={disabled}
+                className="w-auto min-w-0 shrink-0"
+                onClick={() => editor.chain().focus().insertRichTextTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}
+              >
+                <Icon name="table" className="size-3" />
+              </button>
+            </ToggleGroupItem>
+            <ToggleGroupItem
               value="htmlEmbed"
               asChild
             >
@@ -1469,6 +1496,17 @@ const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorProps>(({
             variant="ghost"
             size="xs"
             className="size-6!"
+            title="Insert Table"
+            disabled={disabled}
+            onClick={() => editor.chain().focus().insertRichTextTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}
+          >
+            <Icon name="table" className="size-3" />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            className="size-6!"
             title="Insert HTML Embed"
             disabled={disabled}
             onClick={() => editor.chain().focus().insertHtmlEmbed().run()}
@@ -1510,9 +1548,91 @@ const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorProps>(({
         </div>
       )}
 
-      <div className={cn('relative', fullHeight && 'flex-1 min-h-0 flex flex-col [&>div]:flex-1 [&>div]:min-h-0 [&>div]:flex [&>div]:flex-col [&_.tiptap]:flex-1 [&_.tiptap]:min-h-0 [&_.tiptap]:overflow-y-auto')}>
-        <EditorContent editor={editor} />
-      </div>
+      <ContextMenu
+        onOpenChange={(open) => {
+          if (!open) setTableContextMenuOpen(false);
+        }}
+      >
+        <ContextMenuTrigger
+          asChild
+          disabled={disabled || !withFormatting}
+          onContextMenu={(e) => {
+            if (!editor || !withFormatting || disabled) return;
+            const target = e.target as HTMLElement;
+            const isInTable = !!target.closest('table');
+            if (!isInTable) {
+              e.preventDefault();
+              setTableContextMenuOpen(false);
+              return;
+            }
+            const pos = editor.view.posAtCoords({ left: e.clientX, top: e.clientY });
+            if (pos) {
+              editor.chain().focus().setTextSelection(pos.pos).run();
+            }
+            setTableContextMenuOpen(true);
+          }}
+        >
+          <div className={cn('relative', fullHeight && 'flex-1 min-h-0 flex flex-col [&>div]:flex-1 [&>div]:min-h-0 [&>div]:flex [&>div]:flex-col [&_.tiptap]:flex-1 [&_.tiptap]:min-h-0 [&_.tiptap]:overflow-y-auto')}>
+            <EditorContent editor={editor} />
+          </div>
+        </ContextMenuTrigger>
+        {tableContextMenuOpen && editor && (
+          <ContextMenuContent>
+            <ContextMenuItem
+              onClick={() => editor.chain().focus().addColumnBefore().run()}
+              disabled={!editor.can().addColumnBefore()}
+            >
+              Insert column before
+            </ContextMenuItem>
+            <ContextMenuItem
+              onClick={() => editor.chain().focus().addColumnAfter().run()}
+              disabled={!editor.can().addColumnAfter()}
+            >
+              Insert column after
+            </ContextMenuItem>
+            <ContextMenuItem
+              onClick={() => editor.chain().focus().addRowBefore().run()}
+              disabled={!editor.can().addRowBefore()}
+            >
+              Insert row above
+            </ContextMenuItem>
+            <ContextMenuItem
+              onClick={() => editor.chain().focus().addRowAfter().run()}
+              disabled={!editor.can().addRowAfter()}
+            >
+              Insert row below
+            </ContextMenuItem>
+            <ContextMenuSeparator />
+            <ContextMenuItem
+              onClick={() => editor.chain().focus().deleteColumn().run()}
+              disabled={!editor.can().deleteColumn()}
+            >
+              Delete column
+            </ContextMenuItem>
+            <ContextMenuItem
+              onClick={() => editor.chain().focus().deleteRow().run()}
+              disabled={!editor.can().deleteRow()}
+            >
+              Delete row
+            </ContextMenuItem>
+            <ContextMenuSeparator />
+            <ContextMenuItem
+              onClick={() => editor.chain().focus().toggleCurrentRowHeader().run()}
+              disabled={!editor.can().toggleCurrentRowHeader()}
+            >
+              Toggle header row
+            </ContextMenuItem>
+            <ContextMenuSeparator />
+            <ContextMenuItem
+              variant="destructive"
+              onClick={() => editor.chain().focus().deleteTable().run()}
+              disabled={!editor.can().deleteTable()}
+            >
+              Delete table
+            </ContextMenuItem>
+          </ContextMenuContent>
+        )}
+      </ContextMenu>
 
       {/* Inline Variable Button - absolute positioned (when no formatting toolbar is shown) */}
       {!disabled && (!withFormatting || !showFormattingToolbar) && canShowVariables && (
@@ -1544,6 +1664,64 @@ const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorProps>(({
               </DropdownMenuContent>
             )}
           </DropdownMenu>
+        </div>
+      )}
+
+      {/* Table context toolbar */}
+      {withFormatting && showFormattingToolbar && editor && !disabled && editor.isActive('table') && (
+        <div className="flex items-center gap-0.5 border-t border-border px-2 py-1 bg-muted/50">
+          <span className="text-[10px] text-muted-foreground mr-1.5">Table</span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            className="size-6! p-0!"
+            title="Add column after"
+            onClick={() => editor.chain().focus().addColumnAfter().run()}
+          >
+            <Icon name="add-column" className="size-3" />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            className="size-6! p-0!"
+            title="Add row after"
+            onClick={() => editor.chain().focus().addRowAfter().run()}
+          >
+            <Icon name="add-row" className="size-3" />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            className="size-6! p-0!"
+            title="Delete column"
+            onClick={() => editor.chain().focus().deleteColumn().run()}
+          >
+            <Icon name="delete-column" className="size-3" />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            className="size-6! p-0!"
+            title="Delete row"
+            onClick={() => editor.chain().focus().deleteRow().run()}
+          >
+            <Icon name="delete-row" className="size-3" />
+          </Button>
+          <div className="w-px h-4 bg-border mx-1" />
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            className="size-6! p-0! text-destructive hover:text-destructive"
+            title="Delete table"
+            onClick={() => editor.chain().focus().deleteTable().run()}
+          >
+            <Icon name="delete-table" className="size-3" />
+          </Button>
         </div>
       )}
 
