@@ -226,9 +226,9 @@ export const DEFAULT_TEXT_STYLES: Record<string, TextStyle> = {
   },
   tableRow: {
     label: 'Table Row',
-    classes: 'divide-y-[0px] divide-x-[1px] divide-[#000000]/10',
+    classes: '',
     design: {
-      borders: { divideX: '1', divideY: '0', isActive: true, divideColor: '#000000/10', divideStyle: 'solid' },
+      borders: { isActive: true },
       backgrounds: { isActive: true },
     },
   },
